@@ -152,7 +152,7 @@ export interface MaskingRecord {
   length: number;
 }
 
-export interface MagpieSettings {
+export interface SwitchyardSettings {
   maskingEnabled: boolean;
   maskSecrets: boolean;
   maskPersonal: boolean;
@@ -167,7 +167,7 @@ export interface MagpieSettings {
   gatewayAddr: string;
 }
 
-export interface MagpieState {
+export interface SwitchyardState {
   version: string;
   gatewayUrl: string;
   profiles: { id: string; name: string; description: string; agentModels: Record<string, string> }[];
@@ -184,5 +184,5 @@ export interface MagpieState {
     byKind: Record<string, number>;
     records: MaskingRecord[];
   };
-  settings: MagpieSettings;
+  settings: SwitchyardSettings;
 }

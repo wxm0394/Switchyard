@@ -2,12 +2,12 @@ import express from 'express';
 import path from 'node:path';
 import crypto from 'node:crypto';
 import { createServer as createViteServer } from 'vite';
-import type { MagpieState, UsageCallRecord, MaskingRecord } from './src/types.js';
+import type { SwitchyardState, UsageCallRecord, MaskingRecord } from './src/types.js';
 
 const PORT = 3000;
 const HOST = '0.0.0.0';
 
-// Deterministic hash placeholder generator for Magpie privacy masking
+// Deterministic hash placeholder generator for Switchyard privacy masking (preview, adapted from Magpie UI)
 function makePlaceholder(kind: string, raw: string): string {
   const hash = crypto.createHash('sha256').update(raw).digest('hex').slice(0, 8);
   return `{{${kind}_${hash}}}`;
@@ -57,9 +57,9 @@ export function maskText(
   return { masked, detections };
 }
 
-// Initial in-memory state seeded from .github/ui-preview/seed.mjs & Magpie subsystems
-const state: MagpieState = {
-  version: 'v0.19.4-web',
+// Initial in-memory state seeded from Magpie UI preview seed, adapted for Switchyard preview (not yet Railways live data)
+const state: SwitchyardState = {
+  version: 'switchyard-0.1.0-web',
   gatewayUrl: `http://127.0.0.1:${PORT}`,
   profiles: [
     {
@@ -696,7 +696,7 @@ async function startServer() {
   const app = express();
   app.use(express.json({ limit: '2mb' }));
 
-  // Healthcheck endpoint (matches Dockerfile `/magpie healthcheck`)
+  // Healthcheck endpoint (Dockerfile Go healthcheck pending; see RAILWAYS_ADAPTATION.md)
   app.get('/api/healthcheck', (_req, res) => {
     res.json({ status: 'ok', version: state.version, gateway: state.gatewayUrl });
   });
@@ -856,7 +856,7 @@ async function startServer() {
   const handleGatewayRequest = (protocolEndpoint: string) => (req: express.Request, res: express.Response) => {
     const body = req.body || {};
     const requestedModel: string = body.model || 'group/coding';
-    const agentName: string = body.agent || (req.headers['x-magpie-agent'] as string) || 'claude';
+    const agentName: string = body.agent || (req.headers['x-switchyard-agent'] as string) || 'claude';
     const rawPrompt: string =
       body.prompt ||
       body.messages?.[body.messages.length - 1]?.content ||
@@ -945,7 +945,7 @@ async function startServer() {
     }
 
     res.json({
-      id: `magpie_${record.route_id}`,
+      id: `switchyard_${record.route_id}`,
       object: 'chat.completion',
       model: `${providerId}/${modelName}`,
       routingNote,
@@ -991,7 +991,7 @@ async function startServer() {
   }
 
   app.listen(PORT, HOST, () => {
-    console.log(`● magpie web & gateway listening on http://${HOST}:${PORT}`);
+    console.log(`● switchyard web & gateway listening on http://${HOST}:${PORT}`);
   });
 }
 

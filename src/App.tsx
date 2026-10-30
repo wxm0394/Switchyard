@@ -26,7 +26,7 @@ import {
   Terminal,
   Zap,
 } from 'lucide-react';
-import type { MagpieState, ViewId } from './types';
+import type { SwitchyardState, ViewId } from './types';
 
 const NAV_SECTIONS: { group: string; items: { id: ViewId; label: string; icon: React.FC<{ className?: string }> }[] }[] = [
   {
@@ -60,7 +60,7 @@ const NAV_SECTIONS: { group: string; items: { id: ViewId; label: string; icon: R
 ];
 
 export default function App() {
-  const [state, setState] = useState<MagpieState | null>(null);
+  const [state, setState] = useState<SwitchyardState | null>(null);
   const [view, setView] = useState<ViewId>('agents');
   const [panelMode, setPanelMode] = useState(false);
   const [copiedText, setCopiedText] = useState<string | null>(null);
@@ -114,8 +114,8 @@ export default function App() {
   useEffect(() => {
     fetch('/api/state')
       .then((r) => r.json())
-      .then((data: MagpieState) => setState(data))
-      .catch((err) => console.error('Failed to load magpie state:', err));
+      .then((data: SwitchyardState) => setState(data))
+      .catch((err) => console.error('Failed to load Switchyard state:', err));
   }, []);
 
   useEffect(() => {
@@ -259,7 +259,7 @@ export default function App() {
     }
   };
 
-  const updateSettings = async (patch: Partial<MagpieState['settings']>) => {
+  const updateSettings = async (patch: Partial<SwitchyardState['settings']>) => {
     const res = await fetch('/api/settings', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -282,7 +282,7 @@ export default function App() {
       <div className="min-h-screen bg-[#0d0e11] text-[#e6e8ee] flex items-center justify-center">
         <div className="flex items-center gap-3 text-sm text-zinc-400">
           <div className="w-2.5 h-2.5 rounded-full bg-emerald-400 animate-pulse" />
-          Starting magpie local gateway…
+          Starting Switchyard gateway…
         </div>
       </div>
     );
@@ -296,7 +296,7 @@ export default function App() {
           <div className="px-4 py-3 border-b border-zinc-800/80 flex items-center justify-between bg-[#16181f]">
             <div className="flex items-center gap-2">
               <span className="w-2 h-2 rounded-full bg-emerald-400" />
-              <span className="font-semibold text-sm tracking-tight">magpie</span>
+              <span className="font-semibold text-sm tracking-tight">switchyard</span>
               <span className="text-xs text-zinc-500 font-mono">{state.settings.gatewayAddr}</span>
             </div>
             <button
@@ -419,7 +419,7 @@ export default function App() {
                 M
               </div>
               <div>
-                <div className="font-semibold text-sm leading-none tracking-tight">magpie</div>
+                <div className="font-semibold text-sm leading-none tracking-tight">switchyard</div>
                 <div className="text-[11px] text-zinc-500 mt-0.5">Every agent&apos;s model</div>
               </div>
             </div>
@@ -510,7 +510,7 @@ export default function App() {
         {/* Top Breadcrumb & Context Header */}
         <header className="h-14 border-b border-zinc-800/80 px-6 flex items-center justify-between bg-[#0f1116]/80 backdrop-blur sticky top-0 z-20">
           <div className="flex items-center gap-2 text-sm">
-            <span className="text-zinc-500">magpie</span>
+            <span className="text-zinc-500">switchyard</span>
             <span className="text-zinc-600">/</span>
             <span className="font-semibold text-zinc-100 capitalize">{view}</span>
           </div>
@@ -555,7 +555,7 @@ export default function App() {
                     Every agent&apos;s model. One place.
                   </h1>
                   <p className="text-xs text-zinc-400 mt-0.5">
-                    Pick any model or routing group for any installed coding agent. magpie rewrites only the model key in the agent&apos;s own config file, preserving comments and formatting.
+                    Pick any model or routing group for any installed coding agent. Switchyard rewrites only the model key in the agent&apos;s own config file, preserving comments and formatting.
                   </p>
                 </div>
                 <div className="flex items-center gap-2 shrink-0">
@@ -1531,7 +1531,7 @@ export GOOGLE_GEMINI_BASE_URL=${state.gatewayUrl} GEMINI_API_KEY=magpie`}
               <div>
                 <h1 className="text-base font-semibold text-zinc-100">Shared Library (Skills, MCP &amp; Instructions)</h1>
                 <p className="text-xs text-zinc-400 mt-0.5">
-                  Write instructions, MCP servers, and <code className="text-sky-300">SKILL.md</code> packages once; magpie syncs them into each agent&apos;s native directory.
+                  Write instructions, MCP servers, and <code className="text-sky-300">SKILL.md</code> packages once; Switchyard syncs them into each agent&apos;s native directory.
                 </p>
               </div>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
