@@ -1,0 +1,5 @@
+{
+  "name": "magpie",
+  "description": "Every agent's model. One place. Local AI model gateway, provider router, quota manager, and privacy masking hub for coding agents.",
+  "requestFramePermissions": []
+}
