@@ -6,7 +6,6 @@ export type ViewId =
   | 'gateway'
   | 'usage'
   | 'library'
-  | 'plugins'
   | 'settings';
 
 export interface AgentItem {
@@ -57,6 +56,15 @@ export interface ProviderItem {
   routing: 'order' | 'rotate' | 'smart' | 'usage' | 'pace';
   models: string[];
   keys: ProviderKeyItem[];
+  upstreamModel?: string;
+  routeState?: string;
+  circuitState?: string;
+  keyState?: string;
+  maxContext?: number;
+  supportsVision?: boolean;
+  supportsTools?: boolean;
+  supportsJson?: boolean;
+  dailyBudget?: string;
   balanceUSD?: number;
   windows?: { window: string; limit: number; used: number; remaining: number; resetsIn: string }[];
   move?: {
@@ -95,7 +103,9 @@ export interface UsageCallRecord {
   ms: number;
   ttft_ms: number;
   tps: number;
-  costUSD: number;
+  billedTokens?: number;
+  validator?: string;
+  costUSD?: number;
   status: number;
   ep: string;
   session: string;
@@ -107,13 +117,14 @@ export interface UsageCallRecord {
 
 export interface AgentSessionItem {
   id: string;
-  agent: 'claude' | 'codex' | 'opencode' | 'gemini';
+  agent: string;
   title: string;
   cwd: string;
   model: string;
   turns: number;
   tokens: number;
-  costUSD: number;
+  billedTokens?: number;
+  costUSD?: number;
   updatedAt: string;
 }
 
@@ -126,18 +137,6 @@ export interface LibrarySkillItem {
     repo?: string;
     dir?: string;
   };
-}
-
-export interface PluginItem {
-  id: string;
-  name: string;
-  packageName: string;
-  kind: 'builtin' | 'auth' | 'middleware';
-  version: string;
-  description: string;
-  on: boolean;
-  essential?: boolean;
-  replacesBuiltin?: string;
 }
 
 export interface MaskingRecord {
@@ -153,6 +152,9 @@ export interface MaskingRecord {
 }
 
 export interface SwitchyardSettings {
+  privacyMode: 'off' | 'low' | 'high';
+  secretaryRoute?: string;
+  kaggleTimerStatus?: string;
   maskingEnabled: boolean;
   maskSecrets: boolean;
   maskPersonal: boolean;
@@ -178,7 +180,6 @@ export interface SwitchyardState {
   usage: UsageCallRecord[];
   sessions: AgentSessionItem[];
   skills: LibrarySkillItem[];
-  plugins: PluginItem[];
   masking: {
     total7d: number;
     byKind: Record<string, number>;

@@ -57,579 +57,68 @@ export function maskText(
   return { masked, detections };
 }
 
-// Initial in-memory state seeded from Magpie UI preview seed, adapted for Switchyard preview (not yet Railways live data)
+// Initial in-memory state seeded with Railways-shaped preview data (aliases, routes, audit-style rows). Example values only; no real keys, no live gateway state.
 const state: SwitchyardState = {
-  version: 'switchyard-0.1.0-web',
+  version: 'switchyard-0.2.0-web',
   gatewayUrl: `http://127.0.0.1:${PORT}`,
   profiles: [
     {
       id: 'default',
       name: 'Default',
-      description: 'Balanced daily setup across subscriptions and relays',
-      agentModels: {
-        claude: 'group/coding',
-        codex: 'codex/gpt-5.5',
-        gemini: 'deepseek/deepseek-flash',
-        opencode: 'moonshot/kimi-k2.5',
-        cursor: 'relay/claude-sonnet-4-6',
-        zed: 'relay/claude-opus-4-7',
-      },
+      description: 'Balanced alias setup: coder for coding, fast for quick turns, reasoning for heavy work',
+      agentModels: { cline: 'coder', roo: 'coder', chat: 'fast', script: 'coder', other: 'fast' },
     },
     {
       id: 'budget',
       name: 'Budget',
-      description: 'Fast, low-cost models and cached endpoints first',
-      agentModels: {
-        claude: 'deepseek/deepseek-v4-pro',
-        codex: 'acme/gpt-5.4-mini',
-        gemini: 'deepseek/deepseek-flash',
-        opencode: 'deepseek/deepseek-flash',
-        cursor: 'acme/gpt-5.4-mini',
-        zed: 'deepseek/deepseek-v4-pro',
-      },
-    },
-    {
-      id: 'focus',
-      name: 'Focus (Deep Reasoning)',
-      description: 'Frontier reasoning models with high effort across all agents',
-      agentModels: {
-        claude: 'relay/claude-opus-4-7',
-        codex: 'codex/gpt-5.5',
-        gemini: 'deepseek/deepseek-v4-pro',
-        opencode: 'relay/claude-opus-4-7',
-        cursor: 'relay/claude-opus-4-7',
-        zed: 'codex/gpt-5.5',
-      },
+      description: 'Fast alias first, reasoning only for heavy work (preview example)',
+      agentModels: { cline: 'fast', roo: 'fast', chat: 'fast', script: 'fast', other: 'fast' },
     },
   ],
   agents: [
-    {
-      id: 'claude',
-      name: 'Claude Code',
-      category: 'CLI',
-      version: '1.0.48',
-      installed: true,
-      connected: true,
-      model: 'group/coding',
-      effort: 'high',
-      configPath: '~/.claude/settings.json',
-      protocol: 'Anthropic Messages (/v1/messages)',
-      shortlist: ['group/coding', 'relay/claude-sonnet-4-6', 'relay/claude-opus-4-7', 'deepseek/deepseek-v4-pro'],
-      activeSessions: 142,
-    },
-    {
-      id: 'codex',
-      name: 'Codex CLI',
-      category: 'CLI',
-      version: '0.28.0',
-      installed: true,
-      connected: true,
-      model: 'codex/gpt-5.5',
-      effort: 'high',
-      configPath: '~/.codex/config.toml',
-      protocol: 'OpenAI Responses (/v1/responses)',
-      shortlist: ['codex/gpt-5.5', 'acme/gpt-5.5', 'relay/gpt-5.5', 'moonshot/kimi-k2.5'],
-      activeSessions: 68,
-    },
-    {
-      id: 'opencode',
-      name: 'OpenCode',
-      category: 'CLI',
-      version: '0.9.12',
-      installed: true,
-      connected: true,
-      model: 'moonshot/kimi-k2.5',
-      effort: 'medium',
-      configPath: '~/.config/opencode/config.json',
-      protocol: 'OpenAI Chat (/v1/chat/completions)',
-      shortlist: ['moonshot/kimi-k2.5', 'deepseek/deepseek-flash', 'acme/gpt-5.4-mini'],
-      activeSessions: 31,
-    },
-    {
-      id: 'gemini',
-      name: 'Gemini CLI',
-      category: 'CLI',
-      version: '0.11.4',
-      installed: true,
-      connected: true,
-      model: 'deepseek/deepseek-flash',
-      effort: 'medium',
-      configPath: '~/.gemini/settings.json',
-      protocol: 'Gemini Stream (/v1beta/models)',
-      shortlist: ['deepseek/deepseek-flash', 'acme/gpt-5.4-mini', 'zhipu/glm-5.3'],
-      activeSessions: 19,
-    },
-    {
-      id: 'cursor',
-      name: 'Cursor CLI',
-      category: 'IDE',
-      version: '0.49.2',
-      installed: true,
-      connected: true,
-      model: 'relay/claude-sonnet-4-6',
-      effort: 'high',
-      configPath: '~/.cursor/argv.json',
-      protocol: 'OpenAI Chat (/v1/chat/completions)',
-      shortlist: ['relay/claude-sonnet-4-6', 'deepseek/deepseek-v4-pro'],
-      activeSessions: 12,
-    },
-    {
-      id: 'zed',
-      name: 'Zed',
-      category: 'IDE',
-      version: '0.183.1',
-      installed: true,
-      connected: true,
-      model: 'relay/claude-opus-4-7',
-      effort: 'high',
-      configPath: '~/.config/zed/settings.json',
-      protocol: 'Anthropic Messages (/v1/messages)',
-      shortlist: ['relay/claude-opus-4-7', 'codex/gpt-5.5'],
-      activeSessions: 9,
-    },
+    { id: 'cline', name: 'Cline', category: 'IDE', version: 'preview', installed: true, connected: true, model: 'coder', effort: 'high', configPath: 'VS Code Cline settings (preview example)', protocol: 'OpenAI Chat (/v1/chat/completions)', shortlist: ['coder', 'fast', 'reasoning', 'vision', 'google/gemini-3-flash-preview', 'qwen3.6-27b'], activeSessions: 3 },
+    { id: 'roo', name: 'Roo Code', category: 'IDE', version: 'preview', installed: true, connected: true, model: 'coder', effort: 'high', configPath: 'VS Code Roo settings (preview example)', protocol: 'OpenAI Chat (/v1/chat/completions)', shortlist: ['coder', 'fast', 'reasoning', 'vision'], activeSessions: 1 },
+    { id: 'chat', name: 'Chat UI', category: 'Desktop', version: 'preview', installed: true, connected: true, model: 'fast', effort: 'medium', configPath: 'Chat UI custom endpoint (preview example)', protocol: 'OpenAI Chat (/v1/chat/completions)', shortlist: ['coder', 'fast', 'reasoning', 'vision'], activeSessions: 0 },
+    { id: 'script', name: 'Batch script', category: 'CLI', version: 'preview', installed: true, connected: true, model: 'coder', effort: 'medium', configPath: 'Script base URL + client token (preview example)', protocol: 'OpenAI Chat (/v1/chat/completions)', shortlist: ['coder', 'fast', 'reasoning'], activeSessions: 0 },
+    { id: 'other', name: 'Other coding agent', category: 'CLI', version: 'preview', installed: false, connected: false, model: 'fast', effort: 'medium', configPath: 'Agent custom endpoint (preview example)', protocol: 'OpenAI Chat (/v1/chat/completions)', shortlist: ['coder', 'fast'], activeSessions: 0 },
   ],
   providers: [
-    {
-      id: 'relay',
-      name: 'Sub2API Relay',
-      kind: 'relay',
-      protocol: 'Anthropic & OpenAI',
-      baseUrl: 'https://relay.sub2api.internal/v1',
-      routing: 'rotate',
-      models: ['claude-sonnet-4-6', 'claude-opus-4-7', 'gpt-5.5'],
-      keys: [
-        { name: 'main', maskedKey: 'sk-seed-…0001', requestsToday: 84 },
-        { name: 'backup', maskedKey: 'sk-seed-…0002', requestsToday: 41 },
-        { name: 'team', maskedKey: 'sk-seed-…0003', off: true, requestsToday: 0 },
-      ],
-      balanceUSD: 287.4,
-      windows: [
-        { window: '5h', limit: 20, used: 13.4, remaining: 6.6, resetsIn: '3h 06m' },
-        { window: '1d', limit: 60, used: 41.7, remaining: 18.3, resetsIn: '9h 00m' },
-        { window: '7d', limit: 300, used: 118.2, remaining: 181.8, resetsIn: '3d 10h' },
-      ],
-    },
-    {
-      id: 'deepseek',
-      name: 'DeepSeek Official',
-      kind: 'api',
-      protocol: 'OpenAI Chat',
-      baseUrl: 'https://api.deepseek.com/v1',
-      routing: 'order',
-      models: ['deepseek-v4-pro', 'deepseek-flash'],
-      keys: [{ name: 'default', maskedKey: 'sk-dseek…9f2a', requestsToday: 63 }],
-      balanceUSD: 42.85,
-    },
-    {
-      id: 'acme',
-      name: 'Acme Cloud',
-      kind: 'api',
-      protocol: 'OpenAI Responses & Chat',
-      baseUrl: 'https://api.acmecloud.dev/v1',
-      routing: 'order',
-      models: ['gpt-5.5', 'gpt-5.4-mini', 'gpt-5.3-codex'],
-      keys: [{ name: 'prod-key', maskedKey: 'sk-acme-…0001', requestsToday: 52 }],
-      balanceUSD: 119.1,
-    },
-    {
-      id: 'moonshot',
-      name: 'Kimi (Moonshot)',
-      kind: 'api',
-      protocol: 'OpenAI Chat',
-      baseUrl: 'https://api.moonshot.cn/v1',
-      routing: 'order',
-      models: ['kimi-k2.5', 'kimi-k3'],
-      keys: [{ name: 'cn-main', maskedKey: 'sk-kimi-…881c', requestsToday: 29 }],
-      balanceUSD: 64.0,
-    },
-    {
-      id: 'codex',
-      name: 'Codex / ChatGPT Plan',
-      kind: 'subscription',
-      protocol: 'ChatGPT Backend Responses',
-      baseUrl: 'https://chatgpt.com/backend-api/codex',
-      routing: 'smart',
-      models: ['gpt-5.5', 'gpt-5.4', 'gpt-5.3-codex', 'gpt-5.4-mini'],
-      keys: [],
-    },
-    {
-      id: 'cursor',
-      name: 'Cursor Subscription',
-      kind: 'subscription',
-      protocol: 'OpenCode Auth Plugin Host',
-      baseUrl: 'plugin://@magpie-community/opencode-cursor-auth',
-      routing: 'smart',
-      models: ['claude-sonnet-4-6', 'gpt-5.5'],
-      keys: [],
-      move: {
-        state: 'plugin',
-        pluginPkg: '@magpie-community/opencode-cursor-auth',
-      },
-    },
+    { id: 'kaggle', name: 'Kaggle Gemini 3.6 Flash', kind: 'api', protocol: 'OpenAI Chat', baseUrl: 'Model Proxy (preview example, not a live endpoint)', routing: 'rotate', models: ['google/gemini-3-flash-preview'], upstreamModel: 'google/gemini-3-flash-preview', routeState: 'healthy', circuitState: 'closed', keyState: 'healthy', maxContext: 1000000, supportsVision: true, supportsTools: true, supportsJson: true, dailyBudget: '$10/day (example)', keys: [{ name: 'model-proxy', maskedKey: 'sk-example-…0001', requestsToday: 46 }], windows: [{ window: '1d', limit: 10, used: 6.2, remaining: 3.8, resetsIn: '~17:00 CST (example)' }] },
+    { id: 'qwen-gpu', name: 'Qwen3.5-9B GPU', kind: 'api', protocol: 'OpenAI Chat', baseUrl: 'Kaggle GPU tunnel (preview example, not a live endpoint)', routing: 'order', models: ['qwen3.6-27b'], upstreamModel: 'qwen3.5-9b', routeState: 'healthy', circuitState: 'closed', keyState: 'healthy', maxContext: 131072, supportsVision: false, supportsTools: true, supportsJson: true, dailyBudget: 'GPU time (example, 30h/week in real system)', keys: [{ name: 'gpu-tunnel', maskedKey: 'sk-example-…0002', requestsToday: 1 }], windows: [{ window: '1w', limit: 30, used: 12, remaining: 18, resetsIn: 'week (example)' }] },
+    { id: 'nvidia', name: 'NVIDIA Lightning', kind: 'api', protocol: 'OpenAI Chat', baseUrl: 'https://integrate.api.nvidia.com/v1', routing: 'order', models: ['nvidia-lightning'], upstreamModel: 'nvidia-lightning', routeState: 'healthy', circuitState: 'closed', keyState: 'healthy', maxContext: 131072, supportsVision: false, supportsTools: true, supportsJson: true, dailyBudget: 'example daily budget', keys: [{ name: 'default', maskedKey: 'sk-example-…0003', requestsToday: 12 }] },
+    { id: 'secretary', name: 'Secretary route (private only)', kind: 'api', protocol: 'OpenAI Chat', baseUrl: 'https://openrouter.ai/api/v1', routing: 'order', models: ['openrouter-nemotron-lightning'], upstreamModel: 'openrouter-nemotron-lightning', routeState: 'healthy', circuitState: 'closed', keyState: 'healthy', maxContext: 131072, supportsVision: false, supportsTools: true, supportsJson: true, dailyBudget: 'example daily budget', keys: [{ name: 'default', maskedKey: 'sk-example-…0004', requestsToday: 0 }] },
+    { id: 'zai', name: 'Z.ai GLM 4.7 Flash', kind: 'api', protocol: 'OpenAI Chat', baseUrl: 'https://open.bigmodel.cn/api/paas/v4', routing: 'order', models: ['zai-glm-4.7-flash'], upstreamModel: 'glm-4.7-flash', routeState: 'healthy', circuitState: 'closed', keyState: 'healthy', maxContext: 200000, supportsVision: false, supportsTools: true, supportsJson: true, dailyBudget: 'Free capacity, 1305 when busy (example)', keys: [{ name: 'default', maskedKey: 'sk-example-…0005', requestsToday: 3 }] },
+    { id: 'cerebras', name: 'Cerebras GPT-OSS 120B', kind: 'api', protocol: 'OpenAI Chat', baseUrl: 'https://api.cerebras.ai/v1', routing: 'order', models: ['gpt-oss-120b'], upstreamModel: 'gpt-oss-120b', routeState: 'healthy', circuitState: 'closed', keyState: 'healthy', maxContext: 131072, supportsVision: false, supportsTools: true, supportsJson: true, dailyBudget: '1M tokens/day (example)', keys: [{ name: 'default', maskedKey: 'sk-example-…0006', requestsToday: 1 }], windows: [{ window: '1d', limit: 1000000, used: 120000, remaining: 880000, resetsIn: 'midnight UTC (example)' }] },
   ],
   accounts: [
-    {
-      id: 'acct-seed-maya',
-      provider: 'codex',
-      user: 'maya.chen@example.com',
-      plan: 'Pro',
-      active: true,
-      credits: '1,250',
-      windows: [
-        { label: '5 hours', usedPercent: 37, resetsIn: '2h 12m', resetAt: new Date(Date.now() + 2.2 * 3600e3).toISOString() },
-        { label: '7 days', usedPercent: 64, resetsIn: '2d 07h', resetAt: new Date(Date.now() + 55 * 3600e3).toISOString() },
-      ],
-    },
-    {
-      id: 'acct-seed-team',
-      provider: 'codex',
-      user: 'dev.team@example.com',
-      plan: 'Plus',
-      active: true,
-      credits: null,
-      windows: [
-        { label: '5 hours', usedPercent: 91, resetsIn: '48m', resetAt: new Date(Date.now() + 0.8 * 3600e3).toISOString() },
-        { label: '7 days', usedPercent: 83, resetsIn: '4d 14h', resetAt: new Date(Date.now() + 110 * 3600e3).toISOString() },
-      ],
-    },
-    {
-      id: 'acct-claude-max',
-      provider: 'claude',
-      user: 'maya.chen@work.io',
-      plan: 'Max 20x',
-      active: true,
-      credits: null,
-      windows: [
-        { label: '5 hours', usedPercent: 22, resetsIn: '3h 40m', resetAt: new Date(Date.now() + 3.66 * 3600e3).toISOString() },
-        { label: '7 days', usedPercent: 48, resetsIn: '5d 02h', resetAt: new Date(Date.now() + 122 * 3600e3).toISOString() },
-      ],
-    },
+    { id: 'b-kaggle', provider: 'kaggle', user: 'preview example', plan: '$10/day (example)', active: true, windows: [{ label: 'Today (UTC)', usedPercent: 62, resetsIn: '~17:00 CST (example)', resetAt: '17:00 CST (example)' }] },
+    { id: 'b-cerebras', provider: 'cerebras', user: 'preview example', plan: '1M tokens/day (example)', active: true, windows: [{ label: 'Today (UTC)', usedPercent: 12, resetsIn: 'midnight UTC (example)', resetAt: '00:00 UTC (example)' }] },
+    { id: 'b-llm7', provider: 'llm7', user: 'preview example', plan: '100K tokens/day (example)', active: true, windows: [{ label: 'Today (UTC)', usedPercent: 21, resetsIn: 'midnight UTC (example)', resetAt: '00:00 UTC (example)' }] },
+    { id: 'b-sambanova', provider: 'sambanova', user: 'preview example', plan: '20 req/day/model (example)', active: true, windows: [{ label: 'Today (UTC)', usedPercent: 15, resetsIn: 'midnight UTC (example)', resetAt: '00:00 UTC (example)' }] },
   ],
   groups: [
-    {
-      id: 'coding',
-      name: 'Coding',
-      routing: 'order',
-      members: ['relay/claude-sonnet-4-6', 'acme/gpt-5.5', 'deepseek/deepseek-v4-pro'],
-      rules: [
-        { use: 'deepseek/deepseek-flash', agents: ['opencode'], intent: 'quick lookup & shell explain' },
-      ],
-    },
-    {
-      id: 'opus-anywhere',
-      name: 'Opus anywhere',
-      routing: 'smart',
-      members: ['relay/claude-opus-4-7', 'codex/gpt-5.5', 'acme/gpt-5.5'],
-      rules: [
-        { use: 'relay/claude-sonnet-4-6', intent: 'formatting & lint fixes' },
-      ],
-    },
+    { id: 'coder', name: 'coder', routing: 'rotate', members: ['google/gemini-3-flash-preview', 'qwen3.6-27b', 'nvidia-lightning', 'zai-glm-4.7-flash', 'gpt-oss-120b'], rules: [{ use: 'google/gemini-3-flash-preview', intent: 'Weighted rotation 4/3/2/1, quota-aware, size split (small: whole pool; large: high-capacity only, Groq excluded for large first-pick), Kaggle 60% cap: above 60% Kaggle leaves first-pick, stays in failover.' }] },
+    { id: 'fast', name: 'fast', routing: 'rotate', members: ['google/gemini-3-flash-preview', 'qwen3.6-27b', 'nvidia-lightning', 'zai-glm-4.7-flash', 'gpt-oss-120b'], rules: [{ use: 'google/gemini-3-flash-preview', intent: 'Weighted rotation 4/3/2/1, quota-aware, size split.' }] },
+    { id: 'reasoning', name: 'reasoning', routing: 'rotate', members: ['google/gemini-3-flash-preview', 'nvidia-lightning', 'zai-glm-4.7-flash', 'qwen3.6-27b', 'gpt-oss-120b'], rules: [{ use: 'google/gemini-3-flash-preview', intent: 'Weighted rotation 4/3/2/1, quota-aware, size split. Qwen sits near the tail in this alias (preview example).' }] },
+    { id: 'vision', name: 'vision', routing: 'order', members: ['google/gemini-3-flash-preview', 'laguna-xs'], rules: [{ use: 'google/gemini-3-flash-preview', intent: 'Image input only, not image generation. First available, then failover.' }] },
   ],
   usage: [
-    {
-      route_id: 1790000000108,
-      t: new Date(Date.now() - 2 * 60e3).toISOString(),
-      agent: 'claude',
-      provider: 'relay',
-      model: 'claude-sonnet-4-6',
-      req: 'group/coding',
-      served: 'claude-sonnet-4-6',
-      in: 4820,
-      out: 940,
-      cache_read: 64200,
-      reasoning: 310,
-      effort: 'high',
-      ms: 11800,
-      ttft_ms: 890,
-      tps: 86.2,
-      costUSD: 0.042,
-      status: 200,
-      ep: '/v1/messages',
-      session: 'a8f012bc-4012-4c9a-991b-7712309ab102',
-      providerKeyName: 'main',
-      maskedCount: 2,
-    },
-    {
-      route_id: 1790000000107,
-      t: new Date(Date.now() - 9 * 60e3).toISOString(),
-      agent: 'codex',
-      provider: 'codex',
-      model: 'gpt-5.5',
-      req: 'codex/gpt-5.5',
-      served: 'gpt-5.5',
-      in: 3190,
-      out: 1420,
-      cache_read: 28400,
-      reasoning: 640,
-      effort: 'high',
-      ms: 16400,
-      ttft_ms: 1520,
-      tps: 95.4,
-      costUSD: 0.0,
-      status: 200,
-      ep: '/v1/responses → /backend-api/codex/responses',
-      session: '01a09812-772b-419a-8190-112233445566',
-      providerAccount: 'maya.chen@example.com',
-      maskedCount: 1,
-    },
-    {
-      route_id: 1790000000106,
-      t: new Date(Date.now() - 24 * 60e3).toISOString(),
-      agent: 'opencode',
-      provider: 'deepseek',
-      model: 'deepseek-flash',
-      req: 'group/coding',
-      served: 'deepseek-flash',
-      in: 1940,
-      out: 520,
-      cache_read: 12000,
-      ms: 6800,
-      ttft_ms: 410,
-      tps: 81.3,
-      costUSD: 0.003,
-      status: 200,
-      ep: '/v1/chat/completions',
-      session: 'c91203ab-3120-4f11-8a92-881920391011',
-    },
-    {
-      route_id: 1790000000105,
-      t: new Date(Date.now() - 41 * 60e3).toISOString(),
-      agent: 'claude',
-      provider: 'relay',
-      model: 'claude-opus-4-7',
-      req: 'relay/claude-opus-4-7',
-      served: 'claude-opus-4-7',
-      in: 7650,
-      out: 1890,
-      cache_read: 81200,
-      reasoning: 820,
-      effort: 'high',
-      ms: 49200,
-      ttft_ms: 1680,
-      tps: 39.8,
-      costUSD: 0.148,
-      status: 200,
-      ep: '/v1/messages',
-      session: 'f49102bc-991a-4c00-b219-441239812091',
-      providerKeyName: 'backup',
-      maskedCount: 3,
-    },
-    {
-      route_id: 1790000000104,
-      t: new Date(Date.now() - 68 * 60e3).toISOString(),
-      agent: 'gemini',
-      provider: 'acme',
-      model: 'gpt-5.4-mini',
-      req: 'acme/gpt-5.4-mini',
-      served: 'gpt-5.4-mini',
-      in: 2100,
-      out: 610,
-      cache_read: 0,
-      ms: 3400,
-      ttft_ms: 320,
-      tps: 198.0,
-      costUSD: 0.004,
-      status: 200,
-      ep: '/v1beta/models:streamGenerateContent → /v1/chat/completions',
-      session: 'd1029384-5566-4778-9900-aabbccddeeff',
-    },
-    {
-      route_id: 1790000000103,
-      t: new Date(Date.now() - 95 * 60e3).toISOString(),
-      agent: 'codex',
-      provider: 'codex',
-      model: 'gpt-5.5',
-      req: 'codex/gpt-5.5',
-      served: 'gpt-5.5',
-      in: 5400,
-      out: 0,
-      cache_read: 0,
-      ms: 420,
-      ttft_ms: 0,
-      tps: 0,
-      costUSD: 0,
-      status: 429,
-      ep: '/v1/responses → /backend-api/codex/responses',
-      session: '01a09812-772b-419a-8190-112233445566',
-      providerAccount: 'dev.team@example.com',
-      err: 'rate limited on dev.team@example.com (91% 5h window): automatically failed over to maya.chen@example.com',
-    },
+    { route_id: 1790000000111, t: new Date().toISOString(), agent: 'cline', provider: 'kaggle', model: 'google/gemini-3-flash-preview', req: 'coder', served: 'google/gemini-3-flash-preview', in: 68234, out: 1240, cache_read: 0, billedTokens: 69474, validator: 'pass', ms: 3200, ttft_ms: 210, tps: 92.5, costUSD: 0, status: 200, ep: '/v1/chat/completions', session: '11111111-2222-3333-4444-555555555501', maskedCount: 0 },
+    { route_id: 1790000000112, t: new Date().toISOString(), agent: 'roo', provider: 'qwen-gpu', model: 'qwen3.5-9b', req: 'coder', served: 'qwen3.5-9b', in: 2684, out: 176, cache_read: 0, billedTokens: 2860, validator: 'pass', ms: 78128, ttft_ms: 210, tps: 92.5, costUSD: 0, status: 200, ep: '/v1/chat/completions', session: '11111111-2222-3333-4444-555555555502', maskedCount: 0 },
+    { route_id: 1790000000113, t: new Date().toISOString(), agent: 'cline', provider: 'nvidia', model: 'nvidia-lightning', req: 'fast', served: 'nvidia-lightning', in: 1940, out: 520, cache_read: 0, billedTokens: 2460, validator: 'pass', ms: 1400, ttft_ms: 210, tps: 92.5, costUSD: 0, status: 200, ep: '/v1/chat/completions', session: '11111111-2222-3333-4444-555555555503', maskedCount: 0 },
+    { route_id: 1790000000114, t: new Date().toISOString(), agent: 'cline', provider: 'qwen-gpu', model: 'qwen3.5-9b', req: 'coder', served: 'qwen3.5-9b', in: 0, out: 0, cache_read: 0, billedTokens: 0, validator: 'server_error', ms: 79, ttft_ms: 0, tps: 0, costUSD: 0, status: 502, ep: '/v1/chat/completions', session: '11111111-2222-3333-4444-555555555504', maskedCount: 0, err: 'preview example: upstream 530 (tunnel offline example), not a live failure' },
   ],
   sessions: [
-    {
-      id: 'a8f012bc-4012-4c9a-991b-7712309ab102',
-      agent: 'claude',
-      title: 'Fix the flaky login test & port CLI flags to new parser',
-      cwd: '~/work/shop-api',
-      model: 'claude-sonnet-4-6',
-      turns: 24,
-      tokens: 184200,
-      costUSD: 0.64,
-      updatedAt: '2m ago',
-    },
-    {
-      id: '01a09812-772b-419a-8190-112233445566',
-      agent: 'codex',
-      title: 'Add pagination to the sessions list and write orders migration',
-      cwd: '~/work/web-app',
-      model: 'gpt-5.5',
-      turns: 18,
-      tokens: 129400,
-      costUSD: 0.0,
-      updatedAt: '9m ago',
-    },
-    {
-      id: 'f49102bc-991a-4c00-b219-441239812091',
-      agent: 'claude',
-      title: 'Make the quota forecast chart readable in dark mode',
-      cwd: '~/work/web-app',
-      model: 'claude-opus-4-7',
-      turns: 31,
-      tokens: 291000,
-      costUSD: 1.82,
-      updatedAt: '41m ago',
-    },
-    {
-      id: 'c91203ab-3120-4f11-8a92-881920391011',
-      agent: 'opencode',
-      title: 'Speed up the search endpoint & add retry middleware',
-      cwd: '~/work/infra',
-      model: 'deepseek-flash',
-      turns: 11,
-      tokens: 54300,
-      costUSD: 0.05,
-      updatedAt: '1h ago',
-    },
-    {
-      id: 'e7712390-1122-4334-9556-778899001122',
-      agent: 'claude',
-      title: 'Refactor the config loader to preserve JSONC comments',
-      cwd: '~/oss/parser',
-      model: 'claude-sonnet-4-6',
-      turns: 15,
-      tokens: 112800,
-      costUSD: 0.39,
-      updatedAt: '3h ago',
-    },
+    { id: '11111111-2222-3333-4444-555555555501', agent: 'cline', title: 'coder -> google/gemini-3-flash-preview (preview audit row)', cwd: '~/work/example (preview)', model: 'google/gemini-3-flash-preview', turns: 1, tokens: 69474, billedTokens: 69474, updatedAt: new Date().toISOString() },
+    { id: '11111111-2222-3333-4444-555555555502', agent: 'roo', title: 'coder -> qwen3.5-9b (preview audit row)', cwd: '~/work/example (preview)', model: 'qwen3.5-9b', turns: 1, tokens: 2860, billedTokens: 2860, updatedAt: new Date().toISOString() },
+    { id: '11111111-2222-3333-4444-555555555503', agent: 'cline', title: 'fast -> nvidia-lightning (preview audit row)', cwd: '~/work/example (preview)', model: 'nvidia-lightning', turns: 1, tokens: 2460, billedTokens: 2460, updatedAt: new Date().toISOString() },
   ],
   skills: [
-    {
-      name: 'pdf',
-      description: 'Read, fill and merge PDF files',
-      agents: ['claude', 'codex'],
-      source: { kind: 'github', repo: 'anthropics/skills' },
-    },
-    {
-      name: 'webapp-testing',
-      description: 'Test a local web app with Playwright',
-      agents: ['claude', 'codex'],
-      source: { kind: 'github', repo: 'anthropics/skills' },
-    },
-    {
-      name: 'frontend-design',
-      description: 'Build polished front-end interfaces',
-      agents: ['claude', 'codex', 'opencode'],
-      source: { kind: 'github', repo: 'vercel-labs/agent-skills' },
-    },
-    {
-      name: 'react-best-practices',
-      description: 'Review React code for common mistakes',
-      agents: ['claude', 'codex'],
-      source: { kind: 'github', repo: 'vercel-labs/agent-skills' },
-    },
-    {
-      name: 'team-style',
-      description: "Our team's code style and PR review checklist",
-      agents: ['claude', 'codex', 'zed'],
-      source: { kind: 'folder', dir: '~/work/skills/team-style' },
-    },
-  ],
-  plugins: [
-    {
-      id: 'gateway',
-      name: 'Gateway and Routing pages',
-      packageName: 'builtin/gateway',
-      kind: 'builtin',
-      version: 'built-in',
-      description: 'Live protocol translation stage, request inspection and routing mode controls.',
-      on: true,
-      essential: true,
-    },
-    {
-      id: 'groups',
-      name: 'Routing groups',
-      packageName: 'builtin/groups',
-      kind: 'builtin',
-      version: 'built-in',
-      description: 'Smart, order, rotate, usage and pace failover across accounts and models.',
-      on: true,
-    },
-    {
-      id: 'observability',
-      name: 'Observability & Context',
-      packageName: 'builtin/observability',
-      kind: 'builtin',
-      version: 'built-in',
-      description: 'Usage ledger, context window breakdown, decode speed timing and OTLP export.',
-      on: true,
-    },
-    {
-      id: 'sessions',
-      name: 'Sessions manager',
-      packageName: 'builtin/sessions',
-      kind: 'builtin',
-      version: 'built-in',
-      description: 'Browse, search, relocate and resume Claude Code, Codex and omp sessions.',
-      on: true,
-    },
-    {
-      id: 'warmup',
-      name: 'Warm-up and check-in',
-      packageName: 'builtin/warmup',
-      kind: 'builtin',
-      version: 'built-in',
-      description: 'Starts Claude and ChatGPT 5-hour quota windows on your schedule.',
-      on: true,
-    },
-    {
-      id: 'cursor-auth',
-      name: 'Cursor Subscription Auth',
-      packageName: '@magpie-community/opencode-cursor-auth',
-      kind: 'auth',
-      version: '1.4.2',
-      description: 'Serves retired built-in Cursor subscription sign-in, models, usage and gateway requests.',
-      on: true,
-      replacesBuiltin: 'cursor',
-    },
-    {
-      id: 'kiro-auth',
-      name: 'Kiro Subscription Auth',
-      packageName: '@magpie-community/opencode-kiro-auth',
-      kind: 'auth',
-      version: '1.2.0',
-      description: 'Serves retired built-in Kiro subscription accounts via the Bun plugin host.',
-      on: true,
-      replacesBuiltin: 'kiro',
-    },
-    {
-      id: 'zed-auth',
-      name: 'Zed Subscription Auth',
-      packageName: '@magpie-community/opencode-zed-auth',
-      kind: 'auth',
-      version: '1.1.5',
-      description: 'Serves retired built-in Zed subscription accounts in magpie.',
-      on: true,
-      replacesBuiltin: 'zed',
-    },
-    {
-      id: 'model-map',
-      name: 'Model Mapping Middleware',
-      packageName: '@magpie-community/middleware-model-map',
-      kind: 'middleware',
-      version: '1.0.4',
-      description: "New API's model_mapping: send a model under another name; replies keep the name asked for.",
-      on: true,
-    },
+    { name: 'openrouter', description: 'Provider name -> base-URL preset: https://openrouter.ai/api/v1 (preview example).', agents: ['cline', 'roo'], source: { kind: 'folder', dir: 'presets (preview)' } },
+    { name: 'zhipu', description: 'Provider name -> base-URL preset: https://open.bigmodel.cn/api/paas/v4 (preview example).', agents: ['cline'], source: { kind: 'folder', dir: 'presets (preview)' } },
+    { name: 'nvidia', description: 'Provider name -> base-URL preset: https://integrate.api.nvidia.com/v1 (preview example).', agents: ['cline'], source: { kind: 'folder', dir: 'presets (preview)' } },
+    { name: 'cerebras', description: 'Provider name -> base-URL preset: https://api.cerebras.ai/v1 (preview example).', agents: ['cline'], source: { kind: 'folder', dir: 'presets (preview)' } },
+    { name: 'kaggle-template', description: 'Kaggle route templates only: Model Proxy + Kaggle GPU (preview example). No other vendor route templates.', agents: ['cline', 'roo'], source: { kind: 'folder', dir: 'presets (preview)' } },
   ],
   masking: {
     total7d: 5812,
@@ -644,8 +133,8 @@ const state: SwitchyardState = {
       {
         id: 'msk-901',
         timestamp: '2m ago',
-        agent: 'claude',
-        provider: 'relay',
+        agent: 'cline',
+        provider: 'kaggle',
         kind: 'API_KEY',
         action: 'Mask',
         placeholder: '{{API_KEY_k3v9x2mq}}',
@@ -655,8 +144,8 @@ const state: SwitchyardState = {
       {
         id: 'msk-900',
         timestamp: '9m ago',
-        agent: 'codex',
-        provider: 'codex',
+        agent: 'roo',
+        provider: 'kaggle',
         kind: 'EMAIL',
         action: 'Mask',
         placeholder: '{{EMAIL_81a2c90f}}',
@@ -666,8 +155,8 @@ const state: SwitchyardState = {
       {
         id: 'msk-899',
         timestamp: '41m ago',
-        agent: 'claude',
-        provider: 'relay',
+        agent: 'cline',
+        provider: 'kaggle',
         kind: 'PRIVATE_KEY',
         action: 'Mask',
         placeholder: '{{PRIVATE_KEY_4f91e0bc}}',
@@ -677,7 +166,10 @@ const state: SwitchyardState = {
     ],
   },
   settings: {
-    maskingEnabled: true,
+    privacyMode: 'off',
+  secretaryRoute: 'OpenRouter Nemotron Lightning (example, allowSensitive + privateOnly)',
+  kaggleTimerStatus: 'Preview example: Model Proxy key refreshes before 1200s expiry; real timer status comes from the Go backend.',
+  maskingEnabled: true,
     maskSecrets: true,
     maskPersonal: true,
     localModelFinder: false,
@@ -711,7 +203,6 @@ async function startServer() {
     res.json({
       providers: state.providers,
       accounts: state.accounts,
-      onPlugins: state.providers.filter((p) => p.move?.state === 'plugin').map((p) => p.id),
     });
   });
 
@@ -773,12 +264,12 @@ async function startServer() {
         id: cleanId,
         name: String(name),
         kind: kind || 'api',
-        protocol: 'OpenAI Chat & Responses',
+        protocol: 'OpenAI Chat (/v1/chat/completions)',
         baseUrl: baseUrl || `https://api.${cleanId}.com/v1`,
         routing: routing || 'order',
         models: Array.isArray(models) && models.length ? models : [`${cleanId}-pro`, `${cleanId}-flash`],
         keys: [{ name: keyName || 'default', maskedKey, requestsToday: 0 }],
-        balanceUSD: 50.0,
+        dailyBudget: 'example daily budget',
       });
     }
     res.json(state);
@@ -801,7 +292,7 @@ async function startServer() {
       state.groups.push({
         id: cleanId,
         name,
-        routing: routing || 'smart',
+        routing: routing || 'rotate',
         members,
         rules: [],
       });
@@ -830,33 +321,17 @@ async function startServer() {
     res.json(result);
   });
 
-  // Toggle plugin
-  app.post('/api/plugins/builtin', (req, res) => {
-    const { id, on } = req.body || {};
-    const plugin = state.plugins.find((p) => p.id === id);
-    if (!plugin) {
-      res.status(404).json({ error: 'Plugin not found' });
-      return;
-    }
-    if (plugin.essential && !on) {
-      res.status(400).json({ error: 'Essential plugin cannot be turned off' });
-      return;
-    }
-    plugin.on = Boolean(on);
-    res.json(state);
-  });
-
   // Update settings
   app.post('/api/settings', (req, res) => {
     Object.assign(state.settings, req.body || {});
     res.json(state);
   });
 
-  // Unified Gateway simulator & OpenAI / Anthropic / Responses protocol endpoints
+  // Railways preview gateway simulator: OpenAI Chat only
   const handleGatewayRequest = (protocolEndpoint: string) => (req: express.Request, res: express.Response) => {
     const body = req.body || {};
-    const requestedModel: string = body.model || 'group/coding';
-    const agentName: string = body.agent || (req.headers['x-switchyard-agent'] as string) || 'claude';
+    const requestedModel: string = body.model || 'coder';
+    const agentName: string = body.agent || (req.headers['x-switchyard-agent'] as string) || 'cline';
     const rawPrompt: string =
       body.prompt ||
       body.messages?.[body.messages.length - 1]?.content ||
@@ -867,33 +342,18 @@ async function startServer() {
       ? maskText(typeof rawPrompt === 'string' ? rawPrompt : JSON.stringify(rawPrompt), state.settings.neverMask)
       : { masked: String(rawPrompt), detections: [] };
 
-    // Resolve routing group if model starts with group/
+    // Resolve alias (coder/fast/reasoning/vision) or direct-pin by exact modelId (preview round-robin)
     let resolvedSpec = requestedModel;
-    let routingNote = 'Direct provider route';
-    if (requestedModel.startsWith('group/')) {
-      const groupId = requestedModel.slice('group/'.length);
-      const group = state.groups.find((g) => g.id === groupId);
-      if (group && group.members.length > 0) {
-        const ruleMatch = group.rules.find((r) => r.agents?.includes(agentName));
-        if (ruleMatch) {
-          resolvedSpec = ruleMatch.use;
-          routingNote = `Group "${group.name}" intent/agent rule → ${resolvedSpec}`;
-        } else if (group.routing === 'rotate') {
-          resolvedSpec = group.members[state.usage.length % group.members.length];
-          routingNote = `Group "${group.name}" (rotate) → ${resolvedSpec}`;
-        } else if (group.routing === 'smart') {
-          resolvedSpec = group.members[0];
-          routingNote = `Group "${group.name}" (smart: earliest reset window with quota) → ${resolvedSpec}`;
-        } else {
-          resolvedSpec = group.members[0];
-          routingNote = `Group "${group.name}" (${group.routing}) → ${resolvedSpec}`;
-        }
-      }
+    let routingNote = 'Direct-pin by exact modelId (preview)';
+    const alias = state.groups.find((g) => g.id === requestedModel || g.id === requestedModel.replace('group/', ''));
+    if (alias && alias.members.length > 0) {
+      resolvedSpec = alias.members[state.usage.length % alias.members.length];
+      routingNote = `Alias "${alias.id}" (${alias.routing}, preview round-robin) -> ${resolvedSpec}. Real Go gateway uses smooth WRR 4/3/2/1, quota-aware, size split, Kaggle 60% cap.`;
     }
 
     const [providerId, modelName] = resolvedSpec.includes('/')
       ? resolvedSpec.split('/')
-      : ['relay', resolvedSpec];
+      : ['kaggle', resolvedSpec];
 
     const record: UsageCallRecord = {
       route_id: 1790000000000 + state.usage.length + 110,
@@ -905,19 +365,21 @@ async function startServer() {
       served: modelName,
       in: Math.max(120, Math.round(masked.length * 1.4)),
       out: 185,
-      cache_read: 16400,
+      cache_read: 0,
       reasoning: 64,
       effort: 'high',
       ms: 640,
       ttft_ms: 210,
       tps: 92.5,
-      costUSD: providerId === 'codex' ? 0 : 0.008,
+      costUSD: 0,
       status: 200,
       ep: protocolEndpoint,
       session: crypto.randomUUID(),
       maskedCount: detections.length,
     };
 
+    record.billedTokens = record.in + record.out;
+    record.validator = 'pass';
     state.usage.unshift(record);
     if (detections.length > 0) {
       state.masking.total7d += detections.length;
@@ -937,7 +399,7 @@ async function startServer() {
       }
     }
 
-    const vendorReplyMasked = `Routed [${requestedModel}] → [${providerId}/${modelName}] (${routingNote}). Upstream received masked prompt: "${masked}"`;
+    const vendorReplyMasked = `Preview routed [${requestedModel}] → [${providerId}/${modelName}] (${routingNote}). Preview masking only; real Railways forwards verbatim.`;
     // Unmask placeholders back for the local coding agent
     let unmaskedReply = vendorReplyMasked;
     for (const d of detections) {
@@ -964,8 +426,6 @@ async function startServer() {
   };
 
   app.post('/v1/chat/completions', handleGatewayRequest('/v1/chat/completions'));
-  app.post('/v1/messages', handleGatewayRequest('/v1/messages'));
-  app.post('/v1/responses', handleGatewayRequest('/v1/responses'));
 
   // Stub remaining unmigrated /api/* routes with 501 per migration specification
   app.use('/api', (req, res) => {

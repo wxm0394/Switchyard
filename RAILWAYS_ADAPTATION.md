@@ -6,6 +6,45 @@ existing relay. This document is the contract for that adaptation. It is
 not a claim that the adaptation is done: the frontend in this repo is
 still a Magpie UI preview with in-memory seed data.
 
+
+## Frontend Step 2 — done in this PR (preview only, not live data)
+
+Branch `muse/switchyard-frontend-step2`, from main `62728a7e`.
+
+- Views renamed, layout unchanged: Clients, Recent requests, Routes & Keys,
+  Aliases, Audit & Quota, Presets, Settings & Privacy (Railways routing only).
+- Clients seed: Cline (main), Roo Code, Chat UI, Batch script, Other coding
+  agent. Model picker defaults to alias `coder`; direct-pin by exact modelId.
+- Routes & Keys seed: Kaggle Gemini 3.6 Flash, Qwen3.5-9B GPU, NVIDIA Lightning,
+  Secretary route (private only), Z.ai GLM 4.7 Flash, Cerebras GPT-OSS 120B.
+  Keys are `sk-example-…000N` only, masked, never real.
+- Aliases seed: coder / fast / reasoning (rotate, weighted 4/3/2/1) and vision
+  (order, image input only). Rules text carries quota-aware, size split,
+  Kaggle 60% cap, Groq large-request exclusion, direct-pin bypass.
+- Playground: OpenAI Chat only (`POST /v1/chat/completions`). The
+  `/v1/messages` and `/v1/responses` routes and endpoint options are dropped.
+  Masking is labelled local preview only; real Railways forwards verbatim and
+  privacy is currently OFF.
+- Audit & Quota: billed tokens are upstream usage, not money; USD cost columns
+  removed; cache_read is always 0. Recent requests are per-request audit rows;
+  no conversation session grouping is invented.
+- Library -> Presets: provider name -> base-URL presets + Kaggle route
+  templates only. Plugins view, plugin endpoint, and `@magpie-community`
+  data are dropped; there is no Railways plugin equivalent.
+- Settings: privacyMode off/low/high (display only in preview), secretary
+  route example, Kaggle timer preview example.
+- Still preview seed data, NOT real gateway data. The preview `server.ts`
+  still serves `/api/state`, `/api/providers`, `/api/groups`,
+  `/api/agents/model`, `/api/profiles/apply`, `/api/usage/quotas/refresh`,
+  `/api/settings`, and the preview `/v1/chat/completions` handler — it does
+  NOT talk to the Go backend's `/api/gateway/*` endpoints. Wiring the
+  frontend to the Go backend is a later integration step (after Phase 5).
+- Follow-ups noted in the PR body: `RoutingGroup.routing` type still allows
+  `smart`/`usage`/`pace` (UI no longer offers them); `accounts` are repurposed
+  as daily budgets and `skills` as presets without renaming the underlying
+  types; Dockerfile, `docs/`, `AGENTS.md`, `CLAUDE.md`, `LICENSE`,
+  `THIRD_PARTY_NOTICES` remain Magpie originals.
+
 ## Railways facts the UI must match (not Magpie facts)
 
 - Clients use one base URL + one client token, OpenAI format only.

@@ -3,7 +3,6 @@ import {
   Activity,
   ArrowRight,
   BookOpen,
-  Boxes,
   Check,
   ChevronDown,
   Copy,
@@ -32,29 +31,28 @@ const NAV_SECTIONS: { group: string; items: { id: ViewId; label: string; icon: R
   {
     group: 'Work',
     items: [
-      { id: 'agents', label: 'Agents', icon: Terminal },
-      { id: 'sessions', label: 'Sessions', icon: FolderGit2 },
+      { id: 'agents', label: 'Clients', icon: Terminal },
+      { id: 'sessions', label: 'Recent requests', icon: FolderGit2 },
     ],
   },
   {
     group: 'Models',
     items: [
-      { id: 'providers', label: 'Providers', icon: KeyRound },
-      { id: 'routing', label: 'Routing', icon: GitBranch },
+      { id: 'providers', label: 'Routes & Keys', icon: KeyRound },
+      { id: 'routing', label: 'Aliases', icon: GitBranch },
     ],
   },
   {
     group: 'Insights',
     items: [
       { id: 'gateway', label: 'Gateway', icon: Server },
-      { id: 'usage', label: 'Usage', icon: Activity },
+      { id: 'usage', label: 'Audit & Quota', icon: Activity },
     ],
   },
   {
     group: 'Extend',
     items: [
-      { id: 'library', label: 'Library', icon: BookOpen },
-      { id: 'plugins', label: 'Plugins', icon: Boxes },
+      { id: 'library', label: 'Presets', icon: BookOpen },
     ],
   },
 ];
@@ -75,18 +73,18 @@ export default function App() {
   const [newProvName, setNewProvName] = useState('OpenRouter');
   const [newProvUrl, setNewProvUrl] = useState('https://openrouter.ai/api/v1');
   const [newProvKey, setNewProvKey] = useState('');
-  const [newProvModels, setNewProvModels] = useState('anthropic/claude-sonnet-4.6, deepseek/deepseek-v4-pro');
+  const [newProvModels, setNewProvModels] = useState('google/gemini-3-flash-preview, qwen3.6-27b');
 
   // Add Group state
   const [showAddGroup, setShowAddGroup] = useState(false);
   const [newGroupName, setNewGroupName] = useState('');
-  const [newGroupRouting, setNewGroupRouting] = useState<'smart' | 'order' | 'rotate' | 'usage' | 'pace'>('smart');
-  const [newGroupMembers, setNewGroupMembers] = useState('relay/claude-sonnet-4-6, codex/gpt-5.5');
+  const [newGroupRouting, setNewGroupRouting] = useState<'rotate' | 'order'>('rotate');
+  const [newGroupMembers, setNewGroupMembers] = useState('google/gemini-3-flash-preview, qwen3.6-27b');
 
   // Gateway playground state
-  const [gwAgent, setGwAgent] = useState('claude');
-  const [gwEndpoint, setGwEndpoint] = useState<'/v1/messages' | '/v1/chat/completions' | '/v1/responses'>('/v1/messages');
-  const [gwModel, setGwModel] = useState('group/coding');
+  const [gwAgent, setGwAgent] = useState('cline');
+  const [gwEndpoint, setGwEndpoint] = useState<'/v1/chat/completions'>('/v1/chat/completions');
+  const [gwModel, setGwModel] = useState('coder');
   const [gwPrompt, setGwPrompt] = useState(
     'Debug why token sk-proj-8819203948109283abcdforprod fails for user dev.ops@acme-internal.io on 10.24.18.92'
   );
@@ -137,9 +135,9 @@ export default function App() {
     const specs: { spec: string; label: string; category: string }[] = [];
     for (const g of state.groups) {
       specs.push({
-        spec: `group/${g.id}`,
-        label: `group/${g.id} (${g.routing} · ${g.members.length} models)`,
-        category: 'Routing Groups',
+        spec: `${g.id}`,
+        label: `${g.id} (alias · ${g.routing} · ${g.members.length} models)`,
+        category: 'Aliases',
       });
     }
     for (const p of state.providers) {
@@ -264,15 +262,6 @@ export default function App() {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(patch),
-    });
-    if (res.ok) setState(await res.json());
-  };
-
-  const togglePlugin = async (id: string, on: boolean) => {
-    const res = await fetch('/api/plugins/builtin', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ id, on }),
     });
     if (res.ok) setState(await res.json());
   };
@@ -481,7 +470,7 @@ export default function App() {
             </span>
             {state.settings.maskingEnabled && (
               <span className="text-[10px] px-1.5 py-0.5 rounded bg-emerald-500/15 text-emerald-300 border border-emerald-500/30">
-                Masking On
+                Local preview
               </span>
             )}
           </button>
@@ -490,7 +479,7 @@ export default function App() {
             <div className="flex items-center gap-2 min-w-0">
               <span className="w-2 h-2 rounded-full bg-emerald-400 shrink-0" />
               <div className="truncate">
-                <div className="text-[10px] uppercase tracking-wider text-zinc-500">Local Gateway</div>
+                <div className="text-[10px] uppercase tracking-wider text-zinc-500">Preview Gateway</div>
                 <div className="text-xs font-mono text-zinc-300 truncate">{state.settings.gatewayAddr}</div>
               </div>
             </div>
@@ -555,12 +544,12 @@ export default function App() {
                     Every agent&apos;s model. One place.
                   </h1>
                   <p className="text-xs text-zinc-400 mt-0.5">
-                    Pick any model or routing group for any installed coding agent. Switchyard rewrites only the model key in the agent&apos;s own config file, preserving comments and formatting.
+                    Pick an alias (coder / fast / reasoning / vision) or direct-pin an exact modelId for any client. Preview data only — this is not live gateway data.
                   </p>
                 </div>
                 <div className="flex items-center gap-2 shrink-0">
                   <span className="text-xs px-2.5 py-1 rounded-md bg-zinc-800/80 text-zinc-300 font-mono">
-                    {state.agents.length} installed agents
+                    {state.agents.length} clients (preview)
                   </span>
                 </div>
               </div>
@@ -597,7 +586,7 @@ export default function App() {
                             <span>·</span>
                             <span>{agent.protocol}</span>
                             <span>·</span>
-                            <span>{agent.activeSessions} sessions</span>
+                            <span>{agent.activeSessions} recent requests (preview)</span>
                           </div>
                         </div>
 
@@ -640,7 +629,7 @@ export default function App() {
                                   type="text"
                                   value={modelSearch}
                                   onChange={(e) => setModelSearch(e.target.value)}
-                                  placeholder="Search provider/model or group/…"
+                                  placeholder="Search provider/model or alias/…"
                                   autoFocus
                                   className="w-full bg-[#0e1015] border border-zinc-800 rounded-lg pl-8 pr-3 py-1.5 text-xs text-zinc-200 focus:outline-none focus:border-sky-500"
                                 />
@@ -697,9 +686,9 @@ export default function App() {
             <div className="space-y-6">
               <div className="flex items-center justify-between">
                 <div>
-                  <h1 className="text-base font-semibold text-zinc-100">Providers &amp; Subscriptions</h1>
+                  <h1 className="text-base font-semibold text-zinc-100">Routes &amp; Keys (Layer 3)</h1>
                   <p className="text-xs text-zinc-400 mt-0.5">
-                    API keys, Sub2API relays, local servers, and signed-in agent subscriptions served to every agent.
+                    Layer-3 routes and provider keys. Keys are shown masked only, never plaintext. Route state, circuit state and key state below are preview values, not live gateway state.
                   </p>
                 </div>
                 <button
@@ -787,7 +776,7 @@ export default function App() {
               <div className="space-y-3">
                 <div className="flex items-center justify-between">
                   <h2 className="text-xs font-semibold uppercase tracking-wider text-zinc-400">
-                    Signed-In Subscription Accounts (Failover Pool)
+                    Daily budgets (preview example values)
                   </h2>
                   <button
                     onClick={() => refreshQuota()}
@@ -848,7 +837,7 @@ export default function App() {
               {/* Providers List */}
               <div className="space-y-3">
                 <h2 className="text-xs font-semibold uppercase tracking-wider text-zinc-400">
-                  Configured Providers ({state.providers.length})
+                  Configured Routes ({state.providers.length})
                 </h2>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                   {state.providers.map((p) => (
@@ -870,30 +859,24 @@ export default function App() {
                             </div>
                             <div className="text-xs font-mono text-zinc-500 mt-0.5">{p.baseUrl}</div>
                           </div>
-                          {p.balanceUSD !== undefined && (
+                          {p.dailyBudget && (
                             <div className="text-right">
-                              <div className="text-[10px] uppercase text-zinc-500">Balance</div>
+                              <div className="text-[10px] uppercase text-zinc-500">Daily budget (preview)</div>
                               <div className="text-sm font-mono font-semibold text-emerald-400">
-                                ${p.balanceUSD.toFixed(2)}
+                                {p.dailyBudget}
                               </div>
                             </div>
                           )}
                         </div>
 
-                        {p.move?.state === 'plugin' && (
-                          <div className="text-[11px] px-2.5 py-1.5 rounded-lg bg-indigo-500/10 border border-indigo-500/30 text-indigo-300 flex items-center justify-between">
-                            <span>Served by OpenCode plugin:</span>
-                            <span className="font-mono">{p.move.pluginPkg}</span>
-                          </div>
-                        )}
-
+                        
                         {p.windows && (
                           <div className="grid grid-cols-3 gap-2 pt-1">
                             {p.windows.map((w) => (
                               <div key={w.window} className="bg-[#0e1015] border border-zinc-800/80 rounded-lg p-2">
                                 <div className="text-[10px] text-zinc-500 uppercase">{w.window} limit</div>
                                 <div className="text-xs font-mono text-zinc-200 mt-0.5">
-                                  ${w.used.toFixed(1)} / ${w.limit}
+                                  {w.used.toFixed(1)} / {w.limit} (budget units, preview)
                                 </div>
                                 <div className="text-[10px] text-zinc-500">resets {w.resetsIn}</div>
                               </div>
@@ -943,9 +926,9 @@ export default function App() {
             <div className="space-y-6">
               <div className="flex items-center justify-between">
                 <div>
-                  <h1 className="text-base font-semibold text-zinc-100">Routing Groups &amp; Live Stage</h1>
+                  <h1 className="text-base font-semibold text-zinc-100">Aliases &amp; Live Stage</h1>
                   <p className="text-xs text-zinc-400 mt-0.5">
-                    Combine models across subscriptions and API keys into a single virtual model such as <code className="text-sky-300">group/coding</code>.
+                    Aliases coder / fast / reasoning / vision with ordered targets. Weighted rotation 4/3/2/1, quota-aware, size split, Kaggle 60% cap, Groq large-request exclusion, direct-pin bypass. Preview data only.
                   </p>
                 </div>
                 <button
@@ -953,7 +936,7 @@ export default function App() {
                   className="text-xs px-3 py-1.5 rounded-lg bg-sky-500 hover:bg-sky-400 text-zinc-950 font-semibold flex items-center gap-1.5 transition cursor-pointer"
                 >
                   <Plus className="w-3.5 h-3.5" />
-                  New routing group
+                  New alias
                 </button>
               </div>
 
@@ -964,11 +947,11 @@ export default function App() {
                 >
                   <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
                     <div>
-                      <label className="block text-xs text-zinc-400 mb-1">Group Name</label>
+                      <label className="block text-xs text-zinc-400 mb-1">Alias Name</label>
                       <input
                         value={newGroupName}
                         onChange={(e) => setNewGroupName(e.target.value)}
-                        placeholder="daily-coding"
+                        placeholder="coder"
                         className="w-full bg-[#0e1015] border border-zinc-800 rounded-lg px-3 py-1.5 text-xs text-zinc-200"
                         required
                       />
@@ -980,11 +963,8 @@ export default function App() {
                         onChange={(e) => setNewGroupRouting(e.target.value as any)}
                         className="w-full bg-[#0e1015] border border-zinc-800 rounded-lg px-3 py-1.5 text-xs text-zinc-200"
                       >
-                        <option value="smart">smart (soonest reset with quota)</option>
+                        <option value="rotate">rotate (weighted rotation 4/3/2/1, preview round-robin)</option>
                         <option value="order">order (first available, then failover)</option>
-                        <option value="rotate">rotate (round-robin turns)</option>
-                        <option value="usage">usage (least-used first)</option>
-                        <option value="pace">pace (most weekly quota per hour left)</option>
                       </select>
                     </div>
                     <div>
@@ -1009,7 +989,7 @@ export default function App() {
                       type="submit"
                       className="text-xs px-4 py-1.5 rounded-lg bg-sky-500 text-zinc-950 font-semibold cursor-pointer"
                     >
-                      Create Group
+                      Create Alias
                     </button>
                   </div>
                 </form>
@@ -1026,7 +1006,7 @@ export default function App() {
                       <div className="flex items-center gap-2">
                         <span className="font-semibold text-sm text-zinc-100">{g.name}</span>
                         <span className="text-xs font-mono text-sky-300 bg-sky-500/10 border border-sky-500/30 px-2 py-0.5 rounded">
-                          group/{g.id}
+                          {g.id}
                         </span>
                       </div>
                       <span className="text-xs px-2 py-0.5 rounded bg-zinc-800 text-zinc-300 font-mono">
@@ -1118,16 +1098,16 @@ export default function App() {
                 <div className="flex items-center justify-between">
                   <div>
                     <h1 className="text-base font-semibold text-zinc-100">
-                      Multi-Protocol Local Gateway ({state.gatewayUrl})
+                      Railways Playground (preview) ({state.gatewayUrl})
                     </h1>
                     <p className="text-xs text-zinc-400 mt-0.5">
-                      Speaks OpenAI Chat, OpenAI Responses, Anthropic Messages, and Google Gemini, translating streaming, tool calls, and reasoning levels between any agent and provider.
+                      OpenAI Chat only: POST /v1/chat/completions. Railways does not implement /v1/messages or /v1/responses. Privacy is routing only (currently OFF on the real gateway); content is forwarded verbatim there.
                     </p>
                   </div>
                   <button
                     onClick={() =>
                       copyText(
-                        `export OPENAI_BASE_URL=${state.gatewayUrl}/v1 OPENAI_API_KEY=magpie\nexport ANTHROPIC_BASE_URL=${state.gatewayUrl} ANTHROPIC_API_KEY=magpie\nexport GOOGLE_GEMINI_BASE_URL=${state.gatewayUrl} GEMINI_API_KEY=magpie`,
+                        'export OPENAI_BASE_URL=' + state.gatewayUrl + '/v1 OPENAI_API_KEY=<redacted>',
                         'env-export'
                       )
                     }
@@ -1146,9 +1126,7 @@ export default function App() {
                 </div>
 
                 <pre className="bg-[#0b0d12] border border-zinc-800/80 rounded-lg p-3 text-xs font-mono text-zinc-300 overflow-x-auto">
-                  {`export OPENAI_BASE_URL=${state.gatewayUrl}/v1     OPENAI_API_KEY=magpie
-export ANTHROPIC_BASE_URL=${state.gatewayUrl}     ANTHROPIC_API_KEY=magpie
-export GOOGLE_GEMINI_BASE_URL=${state.gatewayUrl} GEMINI_API_KEY=magpie`}
+                  {'export OPENAI_BASE_URL=' + state.gatewayUrl + '/v1     OPENAI_API_KEY=<redacted>'}
                 </pre>
               </div>
 
@@ -1158,10 +1136,10 @@ export GOOGLE_GEMINI_BASE_URL=${state.gatewayUrl} GEMINI_API_KEY=magpie`}
                   <div>
                     <h2 className="text-sm font-semibold text-zinc-100 flex items-center gap-2">
                       <Zap className="w-4 h-4 text-sky-400" />
-                      Interactive Gateway Turn &amp; Privacy Masking Simulator
+                      Interactive Gateway Turn (preview)
                     </h2>
                     <p className="text-xs text-zinc-400 mt-0.5">
-                      Send a real HTTP POST to <code className="text-sky-300">{gwEndpoint}</code> on this server to test group routing and client-side secret masking.
+                      Send a preview HTTP POST to <code className="text-sky-300">{gwEndpoint}</code> on this preview server to test alias routing. Masking below is a local preview only, not Railways server privacy.
                     </p>
                   </div>
                 </div>
@@ -1189,13 +1167,11 @@ export GOOGLE_GEMINI_BASE_URL=${state.gatewayUrl} GEMINI_API_KEY=magpie`}
                         onChange={(e) => setGwEndpoint(e.target.value as any)}
                         className="w-full bg-[#0e1015] border border-zinc-800 rounded-lg px-3 py-1.5 text-xs font-mono text-zinc-200"
                       >
-                        <option value="/v1/messages">POST /v1/messages (Anthropic)</option>
-                        <option value="/v1/responses">POST /v1/responses (OpenAI Responses)</option>
                         <option value="/v1/chat/completions">POST /v1/chat/completions (OpenAI Chat)</option>
                       </select>
                     </div>
                     <div>
-                      <label className="block text-xs text-zinc-400 mb-1">Requested Model or Group</label>
+                      <label className="block text-xs text-zinc-400 mb-1">Requested Alias or ModelId</label>
                       <select
                         value={gwModel}
                         onChange={(e) => setGwModel(e.target.value)}
@@ -1212,7 +1188,7 @@ export GOOGLE_GEMINI_BASE_URL=${state.gatewayUrl} GEMINI_API_KEY=magpie`}
 
                   <div>
                     <label className="block text-xs text-zinc-400 mb-1">
-                      Agent Prompt (include keys, emails, or IPs to test automatic placeholder masking)
+                      Agent Prompt (preview: placeholder masking below is local only, not Railways server behaviour)
                     </label>
                     <textarea
                       rows={2}
@@ -1241,13 +1217,13 @@ export GOOGLE_GEMINI_BASE_URL=${state.gatewayUrl} GEMINI_API_KEY=magpie`}
                         ● Routed to <code className="font-mono">{gwResult.model}</code> — {gwResult.routingNote}
                       </span>
                       <span className="text-zinc-400">
-                        {gwResult.detections.length} secret(s) masked before leaving computer
+                        {gwResult.detections.length} secret(s) masked in this local preview only (real Railways forwards verbatim; privacy is routing only, currently OFF)
                       </span>
                     </div>
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                       <div className="bg-[#0b0d12] border border-zinc-800 rounded-lg p-3 space-y-1">
                         <div className="text-[11px] font-semibold uppercase text-amber-400">
-                          What Upstream Vendor Saw (Masked)
+                          What this preview shows as masked (local preview only)
                         </div>
                         <div className="text-xs font-mono text-zinc-300 break-all">
                           {gwResult.maskedPromptSentToVendor}
@@ -1273,9 +1249,9 @@ export GOOGLE_GEMINI_BASE_URL=${state.gatewayUrl} GEMINI_API_KEY=magpie`}
             <div className="space-y-6">
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                 <div>
-                  <h1 className="text-base font-semibold text-zinc-100">Usage, Quotas &amp; Masking Insights</h1>
+                  <h1 className="text-base font-semibold text-zinc-100">Audit, Quotas &amp; Masking Preview</h1>
                   <p className="text-xs text-zinc-400 mt-0.5">
-                    Real-time token ledger, cache hit rates, subscription reset forecasts, and privacy masking audit log.
+                    Preview audit ledger: billed tokens are upstream usage, not money. Cache read is always 0 — Railways has no prompt caching. The real gateway audit keeps only the latest 200 rows.
                   </p>
                 </div>
                 <div className="flex bg-[#14171f] border border-zinc-800 rounded-lg p-1 self-start">
@@ -1283,7 +1259,7 @@ export GOOGLE_GEMINI_BASE_URL=${state.gatewayUrl} GEMINI_API_KEY=magpie`}
                     [
                       ['allowances', 'Allowances & Quotas'],
                       ['ledger', 'Request Ledger'],
-                      ['masking', `Masking (${state.masking.total7d.toLocaleString()})`],
+                      ['masking', `Masking preview (${state.masking.total7d.toLocaleString()})`],
                     ] as const
                   ).map(([id, label]) => (
                     <button
@@ -1308,20 +1284,20 @@ export GOOGLE_GEMINI_BASE_URL=${state.gatewayUrl} GEMINI_API_KEY=magpie`}
                 </div>
                 <div className="bg-[#13161d] border border-zinc-800/80 rounded-xl p-4">
                   <div className="text-[11px] uppercase tracking-wider text-zinc-500">Prompt Cache Hit Rate</div>
-                  <div className="text-xl font-semibold text-sky-400 mt-1 font-mono">84.6%</div>
-                  <div className="text-[11px] text-zinc-400 mt-0.5">Session affinity preserved</div>
+                  <div className="text-xl font-semibold text-sky-400 mt-1 font-mono">0%</div>
+                  <div className="text-[11px] text-zinc-400 mt-0.5">No prompt caching; sticky is a routing bias only</div>
                 </div>
                 <div className="bg-[#13161d] border border-zinc-800/80 rounded-xl p-4">
-                  <div className="text-[11px] uppercase tracking-wider text-zinc-500">Relay Balance Left</div>
-                  <div className="text-xl font-semibold text-emerald-400 mt-1 font-mono">$287.40</div>
-                  <div className="text-[11px] text-zinc-400 mt-0.5">Sub2API + 3 API vendors</div>
+                  <div className="text-[11px] uppercase tracking-wider text-zinc-500">Billed tokens (preview)</div>
+                  <div className="text-xl font-semibold text-emerald-400 mt-1 font-mono">usage tokens, not money</div>
+                  <div className="text-[11px] text-zinc-400 mt-0.5">See Daily budgets for per-provider caps</div>
                 </div>
                 <div className="bg-[#13161d] border border-zinc-800/80 rounded-xl p-4">
-                  <div className="text-[11px] uppercase tracking-wider text-zinc-500">Secrets Kept From Vendors</div>
+                  <div className="text-[11px] uppercase tracking-wider text-zinc-500">Masking preview (local only)</div>
                   <div className="text-xl font-semibold text-indigo-300 mt-1 font-mono">
                     {state.masking.total7d.toLocaleString()}
                   </div>
-                  <div className="text-[11px] text-zinc-400 mt-0.5">Last 7 days (in-memory only)</div>
+                  <div className="text-[11px] text-zinc-400 mt-0.5">Last 7 days (in-memory preview only; not server privacy)</div>
                 </div>
               </div>
 
@@ -1379,9 +1355,9 @@ export GOOGLE_GEMINI_BASE_URL=${state.gatewayUrl} GEMINI_API_KEY=magpie`}
                       <tr className="border-b border-zinc-800 text-zinc-400 bg-[#101218]">
                         <th className="py-2.5 px-4">Agent</th>
                         <th className="py-2.5 px-4">Routed Model</th>
-                        <th className="py-2.5 px-4">Tokens (In / Out / Cache)</th>
+                        <th className="py-2.5 px-4">Tokens (In / Out / Billed)</th>
                         <th className="py-2.5 px-4">Speed &amp; TTFT</th>
-                        <th className="py-2.5 px-4">Cost</th>
+                        <th className="py-2.5 px-4">Billed tokens</th>
                         <th className="py-2.5 px-4">Status</th>
                       </tr>
                     </thead>
@@ -1399,12 +1375,12 @@ export GOOGLE_GEMINI_BASE_URL=${state.gatewayUrl} GEMINI_API_KEY=magpie`}
                           </td>
                           <td className="py-2.5 px-4 text-zinc-300">
                             {u.in.toLocaleString()} / {u.out.toLocaleString()}{' '}
-                            <span className="text-zinc-500">({u.cache_read.toLocaleString()} cached)</span>
+                            <span className="text-zinc-500">({u.cache_read.toLocaleString()} cached — always 0 on Railways)</span>
                           </td>
                           <td className="py-2.5 px-4 text-zinc-300">
                             {u.tps > 0 ? `${u.tps.toFixed(1)} tok/s · ${u.ttft_ms}ms` : '—'}
                           </td>
-                          <td className="py-2.5 px-4 text-emerald-400">${u.costUSD.toFixed(3)}</td>
+                          <td className="py-2.5 px-4 text-emerald-400">{(u.billedTokens ?? u.in + u.out).toLocaleString()} tokens</td>
                           <td className="py-2.5 px-4">
                             <span
                               className={`px-1.5 py-0.5 rounded text-[11px] ${
@@ -1468,18 +1444,15 @@ export GOOGLE_GEMINI_BASE_URL=${state.gatewayUrl} GEMINI_API_KEY=magpie`}
           {view === 'sessions' && (
             <div className="space-y-6">
               <div>
-                <h1 className="text-base font-semibold text-zinc-100">Agent Conversation Sessions</h1>
+                <h1 className="text-base font-semibold text-zinc-100">Recent requests (audit preview)</h1>
                 <p className="text-xs text-zinc-400 mt-0.5">
-                  Every local Claude Code, Codex, and OpenCode session across project folders, with token counts and one-click terminal resume commands.
+                  Latest preview audit rows. Railways audit session_key is per-request unique; there is no conversation session grouping. The copy button below copies the request id, not a resume command.
                 </p>
               </div>
 
               <div className="space-y-2.5">
                 {state.sessions.map((s) => {
-                  const resumeCmd =
-                    s.agent === 'claude'
-                      ? `cd ${s.cwd} && claude --resume ${s.id}`
-                      : `cd ${s.cwd} && codex resume ${s.id}`;
+                  const resumeCmd = s.id;
                   return (
                     <div
                       key={s.id}
@@ -1510,11 +1483,11 @@ export GOOGLE_GEMINI_BASE_URL=${state.gatewayUrl} GEMINI_API_KEY=magpie`}
                       >
                         {copiedText === s.id ? (
                           <>
-                            <Check className="w-3.5 h-3.5 text-emerald-400" /> Copied resume cmd
+                            <Check className="w-3.5 h-3.5 text-emerald-400" /> Copied request id
                           </>
                         ) : (
                           <>
-                            <Terminal className="w-3.5 h-3.5" /> Resume in terminal
+                            <Terminal className="w-3.5 h-3.5" /> Copy request id
                           </>
                         )}
                       </button>
@@ -1529,9 +1502,9 @@ export GOOGLE_GEMINI_BASE_URL=${state.gatewayUrl} GEMINI_API_KEY=magpie`}
           {view === 'library' && (
             <div className="space-y-6">
               <div>
-                <h1 className="text-base font-semibold text-zinc-100">Shared Library (Skills, MCP &amp; Instructions)</h1>
+                <h1 className="text-base font-semibold text-zinc-100">Presets (provider URLs + Kaggle templates)</h1>
                 <p className="text-xs text-zinc-400 mt-0.5">
-                  Write instructions, MCP servers, and <code className="text-sky-300">SKILL.md</code> packages once; Switchyard syncs them into each agent&apos;s native directory.
+                  Provider name -&gt; base-URL presets, and Kaggle route templates only. No other vendor route templates. Preview list only; the real preset list lives in the Go backend.
                 </p>
               </div>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
@@ -1548,7 +1521,7 @@ export GOOGLE_GEMINI_BASE_URL=${state.gatewayUrl} GEMINI_API_KEY=magpie`}
                     </div>
                     <p className="text-xs text-zinc-300">{sk.description}</p>
                     <div className="flex items-center gap-1.5 pt-1">
-                      <span className="text-[11px] text-zinc-500">Synced to:</span>
+                      <span className="text-[11px] text-zinc-500">Used by:</span>
                       {sk.agents.map((ag) => (
                         <span
                           key={ag}
@@ -1564,61 +1537,13 @@ export GOOGLE_GEMINI_BASE_URL=${state.gatewayUrl} GEMINI_API_KEY=magpie`}
             </div>
           )}
 
-          {/* ==================== PLUGINS VIEW ==================== */}
-          {view === 'plugins' && (
-            <div className="space-y-6">
-              <div>
-                <h1 className="text-base font-semibold text-zinc-100">Built-in &amp; Community OpenCode Plugins</h1>
-                <p className="text-xs text-zinc-400 mt-0.5">
-                  Retired built-in subscriptions (Cursor, Devin, Factory, Grok, Kiro, Qoder, WorkBuddy, ZCode, Zed) run through community OpenCode auth plugins on the Bun plugin host.
-                </p>
-              </div>
-
-              <div className="space-y-2.5">
-                {state.plugins.map((pl) => (
-                  <div
-                    key={pl.id}
-                    className="bg-[#13161d] border border-zinc-800/80 rounded-xl p-4 flex items-center justify-between gap-4"
-                  >
-                    <div className="space-y-1">
-                      <div className="flex items-center gap-2 flex-wrap">
-                        <span className="font-semibold text-sm text-zinc-100">{pl.name}</span>
-                        <span className="text-xs font-mono text-zinc-400 bg-zinc-800 px-2 py-0.5 rounded">
-                          {pl.packageName}
-                        </span>
-                        <span className="text-[11px] text-zinc-500 font-mono">{pl.version}</span>
-                        {pl.replacesBuiltin && (
-                          <span className="text-[11px] px-2 py-0.5 rounded bg-indigo-500/15 text-indigo-300 border border-indigo-500/30">
-                            serves retired built-in: {pl.replacesBuiltin}
-                          </span>
-                        )}
-                      </div>
-                      <p className="text-xs text-zinc-400">{pl.description}</p>
-                    </div>
-                    <button
-                      disabled={pl.essential}
-                      onClick={() => togglePlugin(pl.id, !pl.on)}
-                      className={`px-3 py-1 rounded-lg text-xs font-medium transition cursor-pointer ${
-                        pl.on
-                          ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40'
-                          : 'bg-zinc-800 text-zinc-400'
-                      } ${pl.essential ? 'opacity-60 cursor-not-allowed' : ''}`}
-                    >
-                      {pl.essential ? 'Essential' : pl.on ? 'Enabled' : 'Disabled'}
-                    </button>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
-
           {/* ==================== SETTINGS VIEW ==================== */}
           {view === 'settings' && (
             <div className="space-y-6">
               <div>
-                <h1 className="text-base font-semibold text-zinc-100">Settings &amp; Privacy Masking</h1>
+                <h1 className="text-base font-semibold text-zinc-100">Settings &amp; Privacy (Railways routing only)</h1>
                 <p className="text-xs text-zinc-400 mt-0.5">
-                  Configure client-side prompt secret masking, subscription discovery, and browser access.
+                  Railways privacy is a routing switch, currently OFF in the real gateway — not encryption or redaction, content is forwarded verbatim. Secretary route (preview example): OpenRouter Nemotron Lightning, allowSensitive + privateOnly. Kaggle timer (preview example): Model Proxy key refreshes before 1200s expiry. Masking below is a local preview only.
                 </p>
               </div>
 
@@ -1627,7 +1552,7 @@ export GOOGLE_GEMINI_BASE_URL=${state.gatewayUrl} GEMINI_API_KEY=magpie`}
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-2">
                       <Lock className="w-4 h-4 text-emerald-400" />
-                      <span className="text-sm font-semibold text-zinc-100">Privacy Masking</span>
+                      <span className="text-sm font-semibold text-zinc-100">Local masking preview (not server privacy)</span>
                     </div>
                     <button
                       onClick={() => updateSettings({ maskingEnabled: !state.settings.maskingEnabled })}
@@ -1649,7 +1574,7 @@ export GOOGLE_GEMINI_BASE_URL=${state.gatewayUrl} GEMINI_API_KEY=magpie`}
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-2">
                       <Cpu className="w-4 h-4 text-sky-400" />
-                      <span className="text-sm font-semibold text-zinc-100">Subscription Account Discovery</span>
+                      <span className="text-sm font-semibold text-zinc-100">Kaggle timer &amp; daily budgets (preview)</span>
                     </div>
                     <button
                       onClick={() =>
@@ -1665,7 +1590,7 @@ export GOOGLE_GEMINI_BASE_URL=${state.gatewayUrl} GEMINI_API_KEY=magpie`}
                     </button>
                   </div>
                   <p className="text-xs text-zinc-400">
-                    Automatically discovers signed-in Claude Code and Codex subscriptions in <code className="text-zinc-300">~/.claude</code> and <code className="text-zinc-300">~/.codex</code> so every other agent can share their quota windows.
+                    Preview only: Kaggle Model Proxy $10/day budget and per-provider daily caps are shown in Daily budgets. The real Kaggle timer refreshes the Model Proxy key before its 2h TTL expiry and keeps the old key on failure.
                   </p>
                 </div>
               </div>
