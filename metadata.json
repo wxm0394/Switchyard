@@ -1,5 +1,5 @@
 {
-  "name": "magpie",
-  "description": "Every agent's model. One place. Local AI model gateway, provider router, quota manager, and privacy masking hub for coding agents.",
+  "name": "switchyard",
+  "description": "Switchyard: a lightweight model relay for coding agents. Frontend adapted from Magpie UI; Go backend (Railways) in progress.",
   "requestFramePermissions": []
 }
