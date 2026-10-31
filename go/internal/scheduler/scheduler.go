@@ -54,7 +54,7 @@ type Route struct {
 	AllowSensitive      bool
 	PrivateOnly         bool
 	PrivacyTier         string
-	CostWeight          int
+	CostWeight          float64
 	ReliabilityScore    int
 	Enabled             bool
 	UnavailableUntil    string

@@ -731,7 +731,7 @@ func (g *Gateway) selectCandidates(cls scheduler.Classification, explicitPin str
 		ver := verificationStatus(route, &key, metrics, eff)
 		rRel := clamp01(float64(route.ReliabilityScore) / 100)
 		lLat := clamp01(float64(metrics.LatencyP50) / 5000)
-		cCost := clamp01(float64(route.CostWeight-1) / 9)
+		cCost := clamp01((route.CostWeight - 1) / 9)
 		if explicitPin != "" {
 			if route.ModelID == explicitPin {
 				score := 1000 + rRel*10 - lLat*5
