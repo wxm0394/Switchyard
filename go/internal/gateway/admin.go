@@ -465,6 +465,12 @@ func routeFromBody(body map[string]interface{}, providerKeyID, baseURL string) s
 		}
 		return def
 	}
+	floatVal := func(name string, def float64) float64 {
+		if v, ok := body[name].(float64); ok {
+			return v
+		}
+		return def
+	}
 	strVal := func(name, def string) string {
 		if v, ok := body[name].(string); ok && v != "" {
 			return v
@@ -485,7 +491,7 @@ func routeFromBody(body map[string]interface{}, providerKeyID, baseURL string) s
 		SupportsJSONMode: boolVal("supportsJsonMode", true), SupportsStreaming: boolVal("supportsStreaming", true),
 		MaxContext: intVal("maxContext", 128000), AllowSensitive: boolVal("allowSensitive", false),
 		PrivateOnly: boolVal("privateOnly", false), PrivacyTier: strVal("privacyTier", "cloud_zero_retention"),
-		CostWeight: intVal("costWeight", 1), ReliabilityScore: intVal("reliabilityScore", 100),
+		CostWeight: floatVal("costWeight", 1), ReliabilityScore: intVal("reliabilityScore", 100),
 		Enabled: boolVal("enabled", true),
 	}
 }

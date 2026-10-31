@@ -519,7 +519,7 @@ an existing Node DB opens unchanged.
   supports_streaming INTEGER NOT NULL DEFAULT 1, max_context
   INTEGER NOT NULL DEFAULT 128000, allow_sensitive INTEGER NOT NULL
   DEFAULT 0, private_only INTEGER NOT NULL DEFAULT 0, privacy_tier
-  TEXT NOT NULL DEFAULT 'cloud_zero_retention', cost_weight INTEGER
+  TEXT NOT NULL DEFAULT 'cloud_zero_retention', cost_weight REAL
   NOT NULL DEFAULT 1, reliability_score INTEGER NOT NULL DEFAULT 100,
   enabled INTEGER NOT NULL DEFAULT 1, created_at TEXT NOT NULL)`.
 - `quota_counters (key_id TEXT NOT NULL, window_date TEXT NOT NULL,

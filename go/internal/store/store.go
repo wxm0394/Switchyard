@@ -39,7 +39,7 @@ CREATE TABLE IF NOT EXISTS model_routes (
   supports_json_mode INTEGER NOT NULL DEFAULT 1, supports_streaming INTEGER NOT NULL DEFAULT 1,
   max_context INTEGER NOT NULL DEFAULT 128000, allow_sensitive INTEGER NOT NULL DEFAULT 0,
   private_only INTEGER NOT NULL DEFAULT 0, privacy_tier TEXT NOT NULL DEFAULT 'cloud_zero_retention',
-  cost_weight INTEGER NOT NULL DEFAULT 1, reliability_score INTEGER NOT NULL DEFAULT 100,
+  cost_weight REAL NOT NULL DEFAULT 1, reliability_score INTEGER NOT NULL DEFAULT 100,
   enabled INTEGER NOT NULL DEFAULT 1, created_at TEXT NOT NULL);
 CREATE TABLE IF NOT EXISTS quota_counters (
   key_id TEXT NOT NULL, window_date TEXT NOT NULL,
