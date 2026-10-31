@@ -11,11 +11,13 @@ encrypted blob, or ciphertext value is ever printed, logged, or
 returned by any endpoint in this contract; only column names, formats,
 and masks are documented.
 
-Status: Phase 1 contract + Phase 2 skeleton + Phase 3 core gateway.
-NOT in this pass: tool-rescue, tool-args, Kaggle timer, privacy
-switch behaviour beyond the OFF default, auto-enroll, catalog-watch
-mutation, probe/onboard wizards beyond a stub, RackNerd deploy,
-cutover, or ladder teardown. Those are later PRs.
+Status: Phase 1 contract + Phase 2 skeleton + Phase 3 core gateway
++ Phase 5 (tool-rescue, tool-args, Kaggle timer, privacy routing,
+auto-enroll). NOT in this pass: catalog-watch mutation,
+probe/onboard wizards beyond a stub, RackNerd deploy, cutover, or
+ladder teardown. Those are later PRs. Phase 5 does NOT change the
+React frontend in src/; frontend integration to the Go backend is
+a later step.
 
 ## 0. Global rules
 
@@ -447,16 +449,23 @@ required and has no DB default in Node; inserts must set it.
   `{ deleteRouteIds?: string[], deleteKeyIds?: string[],
   cleanAliasIds?: string[] }` (non-arrays treated as empty).
   Response `{ ok: true, ...cleanupResult }`.
-- GET `/api/gateway/kaggle/refresh-status` — returns the Kaggle
-  refresh status object (per-key `expiresAt`, `lastRefreshAt`,
-  `lastError`, `consecutiveFailures`, plus timer enabled/interval
-  settings). This endpoint is read-only in this contract; the
-  timer itself is a later PR (see §7).
-- POST `/api/gateway/kaggle/refresh` — runs one Kaggle refresh and
-  returns its result object. In the Go Phase 1–3 pass this endpoint
-  returns 501 `{ error: "Kaggle refresh is not implemented in the Go backend yet" }`
-  rather than a fake success, until the timer PR lands. The 501
-  is a deliberate, documented divergence from Node, not a bug.
+- GET `/api/gateway/kaggle/refresh-status` — returns Node's
+  `getKaggleRefreshStatus()` shape: `enabled`, `providerName`,
+  `modelId`, `providerFound`, `keyState`, `expiresAt`,
+  `remainingSeconds`, `lastRefreshAt`, `lastError`,
+  `consecutiveFailures`, with nulls where Node returns null (no
+  provider found, or no refresh state row yet). Phase 5 implements
+  this for real; when the timer is not configured for the instance
+  it returns `{enabled: false, note: ...}` honestly.
+- POST `/api/gateway/kaggle/refresh` — runs one Kaggle refresh
+  (Node's `runKaggleRefreshOnce`) and returns `{action, reason}`.
+  Phase 5 implements this for real, including the cached-token
+  branch (action `cached`, neither success nor failure, DB not
+  overwritten) and failure-keeps-old-key. When the timer is not
+  configured for the instance it returns 501 with an honest
+  message, not a fake success. In the Go Phase 1–3 pass this
+  endpoint returned 501 unconditionally; that placeholder is
+  removed in Phase 5.
 
 ## 4. Database schema (server/db.ts, SQLite)
 
@@ -767,18 +776,37 @@ in Phase 3).
   caller (admin probe/route handlers surface it as a 400/500
   with a generic message), it does not silently return empty
   except where Node does so for display masking.
-- Kaggle refresh endpoint: 501 in Phase 1–3 (see §3.9). Timer,
-  issuance endpoint, and refresh-before logic are a later PR.
-- Auto-enroll: NOT in Phase 3. A verified route must not be
-  appended to aliases automatically until the auto-enroll PR
-  lands with its exclusion-list decision.
-- Tool-rescue / tool-args: NOT in Phase 3. The Go gateway
-  forwards tool calls verbatim; garbled tool calls fail
-  validation and failover exactly like Node without rescue.
-- Privacy switch: Phase 3 implements classification + routing
-  filters for all three modes, with the deployment default
-  unchanged from production (`off`). No redaction, masking,
-  or encryption of content is added.
+- Kaggle timer (Phase 5): implemented per Node
+  `server/kaggle-refresh.ts`. Issuance POSTs to Kaggle's
+  ModelProxy endpoint with body `{}`, Bearer auth, 2h TTL via
+  server-returned `expiryTime` (never a fixed interval), check
+  every 600s, refresh-before 1200s, env `KAGGLE_REFRESH_ENABLED`
+  (exactly `true` to start). Failure keeps the old key. The
+  timer loop uses a dynamic delay (not a fixed ticker) and runs
+  once immediately at startup, as in Node.
+- Auto-enroll (Phase 5): implemented per Node scheduler.ts, with
+  BOTH Node triggers (on-success and startup verified scan), not
+  just one; see the PR body for the trigger ambiguity note. A
+  route appends at the LAST position of every alias except
+  `vision` (capability-filtered), skipping aliases that already
+  contain its modelId. The exclusion-list decision from Phase 3
+  notes is still pending user decision: Phase 5 ports Node
+  behaviour exactly and does not invent an exclusion list.
+- Tool-rescue / tool-args (Phase 5): implemented per Node
+  `server/tool-rescue.ts` and `server/tool-args.ts`, non-streaming
+  path only, in Node order (rescue first, then args, then
+  validator). Streaming is untouched. Scalar coercion is NOT
+  implemented. Go re-marshals repaired arguments with sorted map
+  keys (Node preserves insertion order); the JSON value is
+  identical, so this is not a semantic change.
+- Privacy switch (Phase 5): classification + routing filters for
+  all three modes, with Node's regex patterns (not Phase 3's
+  substring matching) and string-content-only sampling. Default
+  is OFF by user order. DIVERGENCE from Node, deliberate: Node
+  falls back to `high` for a missing/invalid stored mode; Go
+  maps empty/invalid modes to `off` (fail closed to normal
+  routing). allowSensitive/privateOnly are routing switches only,
+  NOT encryption or redaction; content is forwarded verbatim.
 - Probe / onboard / catalog-watch: contract documented in §3.7;
   implementation in Phase 3 is limited to probe (with SSRF guard)
   and read-only catalog-watch status. Onboard batch import and

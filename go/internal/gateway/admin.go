@@ -763,20 +763,76 @@ func (g *Gateway) handleDiagnosticsCleanup(w http.ResponseWriter, r *http.Reques
 	writeJSON(w, 200, map[string]interface{}{"ok": true, "deletedRoutes": deletedRoutes, "deletedKeys": deletedKeys})
 }
 
+// handleKaggleStatus returns Node's getKaggleRefreshStatus shape:
+// enabled, providerName, modelId, providerFound, keyState, expiresAt,
+// remainingSeconds, lastRefreshAt, lastError, consecutiveFailures.
+// Nulls (not empty strings) are used where Node returns null: no
+// provider found, or no refresh state row yet.
 func (g *Gateway) handleKaggleStatus(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		writeJSON(w, 405, map[string]interface{}{"error": "method not allowed"})
 		return
 	}
-	writeJSON(w, 200, map[string]interface{}{"enabled": false, "note": "Kaggle timer is a later PR; status is not yet implemented in Go."})
+	if g.Kaggle == nil {
+		writeJSON(w, 200, map[string]interface{}{"enabled": false, "note": "Kaggle timer is not configured in this gateway instance."})
+		return
+	}
+	st, err := g.Kaggle.Status()
+	if err != nil {
+		writeJSON(w, 500, map[string]interface{}{"error": err.Error()})
+		return
+	}
+	out := map[string]interface{}{
+		"enabled": st.Enabled, "providerName": st.ProviderName, "modelId": st.ModelID,
+		"providerFound": st.ProviderFound, "consecutiveFailures": st.ConsecutiveFailures,
+	}
+	if st.ProviderFound {
+		out["keyState"] = st.KeyState
+	} else {
+		out["keyState"] = nil
+	}
+	if st.ExpiresAt != "" {
+		out["expiresAt"] = st.ExpiresAt
+	} else {
+		out["expiresAt"] = nil
+	}
+	if st.RemainingSeconds != nil {
+		out["remainingSeconds"] = *st.RemainingSeconds
+	} else {
+		out["remainingSeconds"] = nil
+	}
+	if st.LastRefreshAt != "" {
+		out["lastRefreshAt"] = st.LastRefreshAt
+	} else {
+		out["lastRefreshAt"] = nil
+	}
+	if st.LastError != "" {
+		out["lastError"] = st.LastError
+	} else {
+		out["lastError"] = nil
+	}
+	writeJSON(w, 200, out)
 }
 
+// handleKaggleRefresh runs one Kaggle refresh, exactly as Node's
+// POST /api/gateway/kaggle/refresh does, and returns {action, reason}.
+// When the timer is not configured for this instance it returns 501
+// with an honest message, not a fake success.
 func (g *Gateway) handleKaggleRefresh(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		writeJSON(w, 405, map[string]interface{}{"error": "method not allowed"})
 		return
 	}
-	writeJSON(w, 501, map[string]interface{}{"error": "Kaggle refresh is not implemented in the Go backend yet"})
+	if g.Kaggle == nil {
+		writeJSON(w, 501, map[string]interface{}{"error": "Kaggle timer is not configured in this gateway instance"})
+		return
+	}
+	result, err := g.Kaggle.RunOnce(r.Context())
+	if err != nil {
+		writeJSON(w, 500, map[string]interface{}{"error": err.Error()})
+		return
+	}
+	writeJSON(w, 200, map[string]interface{}{"action": result.Action, "reason": result.Reason})
 }
 
 func (g *Gateway) handleCatalogWatch(w http.ResponseWriter, r *http.Request) {

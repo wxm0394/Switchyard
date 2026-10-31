@@ -7,6 +7,7 @@ package scheduler
 import (
 	"encoding/json"
 	"math"
+	"regexp"
 	"strings"
 	"unicode"
 )
@@ -116,6 +117,18 @@ type Message struct {
 	Content interface{} `json:"content"` // string or []ContentPart
 }
 
+// StringText returns the message content only when it is a plain
+// string, matching Node's privacy sampling (messages with string
+// content only). Array content (e.g. vision messages with text +
+// image parts) contributes nothing to privacy sampling in Node, even
+// though Text() joins their text parts for other purposes.
+func (m Message) StringText() string {
+	if s, ok := m.Content.(string); ok {
+		return s
+	}
+	return ""
+}
+
 func (m Message) Text() string {
 	switch c := m.Content.(type) {
 	case string:
@@ -216,7 +229,47 @@ func ResolveRoutingMode(model string) string {
 	}
 }
 
-var sensitiveHigh = []string{"api_secret", "private_key", "binance", "okx", "bybit", "coinbase", "alpaca", "ibkr", "trade_strategy", "alpha_factor", "backtest_portfolio", "auth_token"}
+// EffectivePrivacyMode normalizes a stored privacy mode to one of
+// off/low/high. Only "low" and "high" pass through; everything else,
+// including empty and invalid values, becomes "off".
+//
+// This is a deliberate, user-ordered divergence from Node: Node's
+// getSchedulerConfig falls back to "high" for a missing/invalid value,
+// and its DB schema default is "high". Live Railways runs with mode
+// "off" by user order, and Go must fail closed to normal routing
+// (off) rather than silently enabling private routing for an empty or
+// invalid value. Migrated DBs that store "off" are unaffected either
+// way. Callers must use this before Classify, and Classify applies it
+// defensively as well.
+func EffectivePrivacyMode(mode string) string {
+	switch strings.ToLower(strings.TrimSpace(mode)) {
+	case "low", "high":
+		return strings.ToLower(strings.TrimSpace(mode))
+	default:
+		return "off"
+	}
+}
+
+// Privacy patterns, ported exactly from Node scheduler.ts
+// QUANT_SENSITIVE_PATTERNS (high) and QUANT_SENSITIVE_PATTERNS_LOW.
+// High = the full list; low keeps only the key classes, so discussing
+// exchange names or trading-strategy words no longer triggers private.
+// Routing only: matching a pattern only changes which routes may be
+// picked (allowSensitive/privateOnly hard filters). It is NOT
+// encryption or redaction, and content is forwarded verbatim.
+var privacyPatternsLow = []*regexp.Regexp{
+	regexp.MustCompile(`(?i)api[_-]?secret`),
+	regexp.MustCompile(`(?i)private[_-]?key`),
+	regexp.MustCompile(`(?i)auth_token|bearer\s+[a-z0-9-_]{20,}`),
+}
+
+var privacyPatternsHigh = []*regexp.Regexp{
+	regexp.MustCompile(`(?i)api[_-]?secret`),
+	regexp.MustCompile(`(?i)private[_-]?key`),
+	regexp.MustCompile(`(?i)binance|okx|bybit|coinbase|alpaca|ibkr`),
+	regexp.MustCompile(`(?i)trade_strategy|alpha_factor|backtest_portfolio`),
+	regexp.MustCompile(`(?i)auth_token|bearer\s+[a-z0-9-_]{20,}`),
+}
 
 // Classify ports classifyRequest, minus DB reads (privacyMode and
 // session sources are supplied by the caller via ClassificationInput).
@@ -248,26 +301,25 @@ func Classify(in ClassifyInput) Classification {
 	est := EstimateTokens(in.Messages, in.ToolsJSONLen)
 	lang := DetectLanguage(in.Messages)
 	isPrivate := false
-	if in.PrivacyMode != "off" {
+	// Mode off ignores explicit markers and word lists alike, and the
+	// request is scheduled normally, as in Node.
+	if mode := EffectivePrivacyMode(in.PrivacyMode); mode != "off" {
 		isPrivate = privateHeader == "true" || modelLower == "auto:private"
 		if !isPrivate {
 			var b strings.Builder
 			for _, m := range in.Messages {
-				b.WriteString(m.Text())
+				b.WriteString(m.StringText())
 				b.WriteByte(' ')
 			}
-			lower := strings.ToLower(b.String())
-			if in.PrivacyMode == "low" {
-				isPrivate = strings.Contains(lower, "api_secret") || strings.Contains(lower, "private_key") || strings.Contains(lower, "auth_token")
-			} else {
-				for _, pat := range sensitiveHigh {
-					if strings.Contains(lower, pat) {
-						isPrivate = true
-						break
-					}
-				}
-				if !isPrivate && strings.Contains(lower, "bearer ") {
+			sampleText := b.String()
+			patterns := privacyPatternsHigh
+			if mode == "low" {
+				patterns = privacyPatternsLow
+			}
+			for _, pat := range patterns {
+				if pat.MatchString(sampleText) {
 					isPrivate = true
+					break
 				}
 			}
 		}

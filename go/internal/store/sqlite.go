@@ -380,6 +380,48 @@ func (s *SQLiteStore) DeleteAlias(id string) error {
 	_, err := s.db.Exec(`DELETE FROM model_aliases WHERE id=?`, id)
 	return err
 }
+func (s *SQLiteStore) GetKeyByName(name string) (scheduler.ProviderKey, bool, error) {
+	var k scheduler.ProviderKey
+	var co sql.NullString
+	err := s.db.QueryRow(`SELECT id, name, provider_type, encrypted_key, key_mask, key_state, cooldown_until, consecutive_429, base_url FROM provider_keys WHERE name=? LIMIT 1`, name).Scan(&k.ID, &k.Name, &k.ProviderType, &k.EncryptedKey, &k.KeyMask, &k.KeyState, &co, &k.Consecutive429, &k.BaseURL)
+	if err == sql.ErrNoRows {
+		return scheduler.ProviderKey{}, false, nil
+	}
+	if err != nil {
+		return scheduler.ProviderKey{}, false, err
+	}
+	k.CooldownUntil = co.String
+	return k, true, nil
+}
+func (s *SQLiteStore) GetKaggleState(providerKeyID string) (KaggleState, bool, error) {
+	var st KaggleState
+	var expires, lastRefresh, lastErr sql.NullString
+	err := s.db.QueryRow(`SELECT provider_key_id, expires_at, last_refresh_at, last_error, consecutive_failures FROM kaggle_refresh_state WHERE provider_key_id=?`, providerKeyID).Scan(&st.ProviderKeyID, &expires, &lastRefresh, &lastErr, &st.ConsecutiveFailures)
+	if err == sql.ErrNoRows {
+		return KaggleState{}, false, nil
+	}
+	if err != nil {
+		return KaggleState{}, false, err
+	}
+	st.ExpiresAt = expires.String
+	st.LastRefreshAt = lastRefresh.String
+	st.LastError = lastErr.String
+	return st, true, nil
+}
+func (s *SQLiteStore) UpsertKaggleState(state KaggleState) error {
+	_, err := s.db.Exec(`INSERT INTO kaggle_refresh_state (provider_key_id, expires_at, last_refresh_at, last_error, consecutive_failures) VALUES (?,?,?,?,?) ON CONFLICT(provider_key_id) DO UPDATE SET expires_at=excluded.expires_at, last_refresh_at=excluded.last_refresh_at, last_error=excluded.last_error, consecutive_failures=excluded.consecutive_failures`,
+		state.ProviderKeyID, nullString(state.ExpiresAt), nullString(state.LastRefreshAt), nullString(state.LastError), state.ConsecutiveFailures)
+	return err
+}
+func (s *SQLiteStore) UpdateKaggleKey(providerKeyID, encryptedKey, keyMask, expiresAt, lastRefreshAt string) error {
+	if _, err := s.db.Exec(`UPDATE provider_keys SET encrypted_key=?, key_mask=?, key_state='healthy', cooldown_until=NULL WHERE id=?`, encryptedKey, keyMask, providerKeyID); err != nil {
+		return err
+	}
+	return s.UpsertKaggleState(KaggleState{
+		ProviderKeyID: providerKeyID, ExpiresAt: expiresAt,
+		LastRefreshAt: lastRefreshAt, LastError: "", ConsecutiveFailures: 0,
+	})
+}
 func (s *SQLiteStore) ResetKey429(keyID string) error {
 	_, err := s.db.Exec(`UPDATE provider_keys SET consecutive_429=0 WHERE id=?`, keyID)
 	return err
