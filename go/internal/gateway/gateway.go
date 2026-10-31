@@ -668,7 +668,10 @@ func (g *Gateway) HandleChat(w http.ResponseWriter, r *http.Request) {
 		chain = append(chain, fmt.Sprintf("%s (200 校验通过)", cand.Route.ModelID))
 		chainJSON, _ := json.Marshal(chain)
 		_ = g.Store.AddAudit(store.AuditRow{
-			RequestID: newRequestID(), Timestamp: time.Now().UTC().Format(time.RFC3339),
+			// Millisecond precision, matching Node's toISOString shape.
+			// Second precision made same-second bursts indistinguishable
+			// and broke newest-first audit ordering (Phase 6 battery).
+			RequestID: newRequestID(), Timestamp: time.Now().UTC().Format("2006-01-02T15:04:05.000Z07:00"),
 			SessionKey: cls.SessionKey, ClientTokenID: token.ID, ClientTokenName: token.Name,
 			DetectedTaskType: cls.TaskType, IsPrivate: cls.IsPrivate,
 			SelectedProviderKeyID: cand.Key.ID, SelectedRouteID: cand.Route.ID, SelectedModelID: cand.Route.ModelID,

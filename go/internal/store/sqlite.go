@@ -313,12 +313,12 @@ func (s *SQLiteStore) AddAudit(row AuditRow) error {
 	if err != nil {
 		return err
 	}
-	_, _ = s.db.Exec(`DELETE FROM audit_logs WHERE request_id NOT IN (SELECT request_id FROM audit_logs ORDER BY timestamp DESC LIMIT 200)`)
+	_, _ = s.db.Exec(`DELETE FROM audit_logs WHERE request_id NOT IN (SELECT request_id FROM audit_logs ORDER BY timestamp DESC, rowid DESC LIMIT 200)`)
 	return nil
 }
 
 func (s *SQLiteStore) ListAudit(limit, offset int) ([]AuditRow, error) {
-	rows, err := s.db.Query(`SELECT request_id, timestamp, session_key, client_token_id, client_token_name, detected_task_type, is_private, selected_provider_key_id, selected_route_id, selected_model_id, failover_chain_json, estimated_tokens, billed_tokens, usage_source, latency_ms, status_code, validator_result, preview_prompt, requested_model FROM audit_logs ORDER BY timestamp DESC LIMIT ? OFFSET ?`, limit, offset)
+	rows, err := s.db.Query(`SELECT request_id, timestamp, session_key, client_token_id, client_token_name, detected_task_type, is_private, selected_provider_key_id, selected_route_id, selected_model_id, failover_chain_json, estimated_tokens, billed_tokens, usage_source, latency_ms, status_code, validator_result, preview_prompt, requested_model FROM audit_logs ORDER BY timestamp DESC, rowid DESC LIMIT ? OFFSET ?`, limit, offset)
 	if err != nil {
 		return nil, err
 	}
@@ -347,7 +347,7 @@ func (s *SQLiteStore) DeleteKey(id string) error {
 	return err
 }
 func (s *SQLiteStore) UpsertRoute(r scheduler.Route) error {
-	_, err := s.db.Exec(`INSERT INTO model_routes (id, name, provider_key_id, model_id, display_name, base_url, provider_type, upstream_model, task_role, route_state, circuit_state, circuit_opens_until, consecutive_timeouts, consecutive_5xx, consecutive_failures, circuit_open_count, supports_vision, supports_tools, supports_json_mode, supports_streaming, max_context, allow_sensitive, private_only, privacy_tier, cost_weight, reliability_score, enabled, created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET name=excluded.name, provider_key_id=excluded.provider_key_id, model_id=excluded.model_id, display_name=excluded.display_name, base_url=excluded.base_url, provider_type=excluded.provider_type, upstream_model=excluded.upstream_model, task_role=excluded.task_role, max_context=excluded.max_context, allow_sensitive=excluded.allow_sensitive, private_only=excluded.private_only, enabled=excluded.enabled`,
+	_, err := s.db.Exec(`INSERT INTO model_routes (id, name, provider_key_id, model_id, display_name, base_url, provider_type, upstream_model, task_role, route_state, circuit_state, circuit_opens_until, consecutive_timeouts, consecutive_5xx, consecutive_failures, circuit_open_count, supports_vision, supports_tools, supports_json_mode, supports_streaming, max_context, allow_sensitive, private_only, privacy_tier, cost_weight, reliability_score, enabled, created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET name=excluded.name, provider_key_id=excluded.provider_key_id, model_id=excluded.model_id, display_name=excluded.display_name, base_url=excluded.base_url, provider_type=excluded.provider_type, upstream_model=excluded.upstream_model, task_role=excluded.task_role, max_context=excluded.max_context, allow_sensitive=excluded.allow_sensitive, private_only=excluded.private_only, enabled=excluded.enabled`,
 		r.ID, r.Name, r.ProviderKeyID, r.ModelID, r.DisplayName, r.BaseURL, r.ProviderType, r.UpstreamModel, r.TaskRole, r.RouteState, r.CircuitState, nullString(r.CircuitOpensUntil), r.ConsecutiveTimeouts, r.Consecutive5xx, r.ConsecutiveFailures, r.CircuitOpenCount, boolToInt(r.SupportsVision), boolToInt(r.SupportsTools), boolToInt(r.SupportsJSONMode), boolToInt(r.SupportsStreaming), r.MaxContext, boolToInt(r.AllowSensitive), boolToInt(r.PrivateOnly), r.PrivacyTier, r.CostWeight, r.ReliabilityScore, boolToInt(r.Enabled), time.Now().Format(time.RFC3339))
 	return err
 }
