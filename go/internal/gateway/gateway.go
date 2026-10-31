@@ -420,6 +420,36 @@ func (g *Gateway) HandleModels(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, 200, map[string]interface{}{"object": "list", "data": data})
 }
 
+// unionActTargets returns the Phase 8 Act pool: coder order first,
+// then any fast-only modelIds in fast order, deduplicated by exact
+// modelId string. Kaggle is first in both coder and fast in
+// production, so Kaggle-first is invariant, not a choice. Coder
+// order is primary because Act mode is execution (tools, edits,
+// terminal): coder priority (Kaggle, qwen, NVIDIA, Groq, ...) is
+// safer than fast priority (Kaggle, qwen, Groq, NVIDIA, ...), which
+// would push small Act requests to the Groq free tier before
+// NVIDIA. Fast-only items, if any, go at the tail so they never
+// displace a coder-order position or its 4/3/2/1 rotation weight.
+func unionActTargets(coder, fast []string) []string {
+	seen := map[string]bool{}
+	out := []string{}
+	for _, m := range coder {
+		if m == "" || seen[m] {
+			continue
+		}
+		seen[m] = true
+		out = append(out, m)
+	}
+	for _, m := range fast {
+		if m == "" || seen[m] {
+			continue
+		}
+		seen[m] = true
+		out = append(out, m)
+	}
+	return out
+}
+
 // ---- /v1/chat/completions ----
 
 type chatRequest struct {
@@ -536,6 +566,37 @@ func (g *Gateway) HandleChat(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 	}
+	// Phase 8 Plan/Act (user decision 2026-10-31 17:47, superseding
+	// the generic auto classifier): Cline's Plan/Act toggle is the
+	// switch, not manual alias switching. The gateway recognises
+	// Plan/Act purely by the model ID Cline sends:
+	//   Plan mode model = "reasoning" (existing reasoning alias, as-is)
+	//   Act mode model  = "act" (new merged entry, see below)
+	// No TaskRole re-tagging is used for this mapping, and no
+	// content-based coder-vs-reasoning classifier is consulted:
+	// Plan/Act is explicit in the client config, not inferred.
+	actPool := false
+	// len(aliasTargets)==0 guards the header-pin-as-alias case
+	// above: a pin that resolved to an alias already filled
+	// aliasTargets, and that explicit override must win over act.
+	if requestedModel == "act" && explicitPin == "" && len(aliasTargets) == 0 {
+		if a, ok := aliasByName["act"]; ok && len(a.TargetModels) > 0 {
+			// Operator override: a DB alias named "act" wins over
+			// the synthetic union, so an operator can pin Act
+			// order via the admin API without a code change.
+			aliasTargets = a.TargetModels
+			actPool = true
+		} else {
+			union := unionActTargets(
+				aliasByName["coder"].TargetModels,
+				aliasByName["fast"].TargetModels,
+			)
+			if len(union) > 0 {
+				aliasTargets = union
+				actPool = true
+			}
+		}
+	}
 	if explicitPin == "" && len(aliasTargets) == 0 && requestedModel != "" {
 		if a, ok := aliasByName[requestedModel]; ok && len(a.TargetModels) > 0 {
 			aliasTargets = a.TargetModels
@@ -548,6 +609,50 @@ func (g *Gateway) HandleChat(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 	}
+	// Vision universal: when the request contains an image, vision
+	// routes must not be excluded by the Plan/Act pool choice.
+	// HardFilter already restricts image requests to vision-capable
+	// routes, but it can only keep routes that are IN the chosen
+	// pool. So expand the pool with vision-alias targets (dedup,
+	// chosen pool order first, vision-only additions at the tail)
+	// before candidate selection. In production this adds nothing:
+	// Kaggle + laguna-xs are already in coder/fast/reasoning, but
+	// if an operator ever removes them from a Plan/Act pool, image
+	// requests still find a vision route instead of 503-ing or
+	// falling back to a text-only route. HardFilter still applies
+	// afterwards (vision-capable, tools, JSON, context, private,
+	// quota), so expansion never admits a non-vision route.
+	if cls.HasImage && explicitPin == "" && len(aliasTargets) > 0 {
+		if v, ok := aliasByName["vision"]; ok {
+			seen := map[string]bool{}
+			for _, m := range aliasTargets {
+				seen[m] = true
+			}
+			for _, m := range v.TargetModels {
+				if m != "" && !seen[m] {
+					seen[m] = true
+					aliasTargets = append(aliasTargets, m)
+				}
+			}
+		}
+	}
+	// Pool/task audit headers, set before any response write
+	// (including the 503 below and the 200/502 later). pool is the
+	// pool actually used: "act", an alias name, a direct-pin model,
+	// or "auto" for the legacy auto path. task-type is the existing
+	// classifier output (vision/reasoning/fast), kept for audit;
+	// for Plan/Act it is informational only, pool selection above
+	// does not consult it.
+	poolName := requestedModel
+	if actPool {
+		poolName = "act"
+	} else if explicitPin != "" {
+		poolName = explicitPin
+	} else if cls.RoutingMode == "auto" {
+		poolName = "auto"
+	}
+	w.Header().Set("x-gateway-pool", poolName)
+	w.Header().Set("x-gateway-task-type", cls.TaskType)
 	candidates := g.selectCandidates(cls, explicitPin, aliasTargets, enabledRoutes, keys, cfg)
 	if len(candidates) == 0 && len(aliasTargets) > 0 && explicitPin == "" && isImplicit {
 		candidates = g.selectCandidates(cls, "", nil, enabledRoutes, keys, cfg)
