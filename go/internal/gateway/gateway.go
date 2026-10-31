@@ -1,8 +1,8 @@
-// Package gateway implements the Phase 3 core gateway:
-// POST /v1/chat/completions, GET /v1/models, and the admin API
-// surface documented in GO_API_CONTRACT.md. Tool-rescue, tool-args,
-// Kaggle timer, auto-enroll, and Gemini conversion are NOT in this
-// pass (see GO_API_CONTRACT.md §7).
+// Package gateway implements the core gateway: POST
+// /v1/chat/completions, GET /v1/models, and the admin API surface
+// documented in GO_API_CONTRACT.md. Phase 5 adds tool-rescue,
+// tool-args, the Kaggle timer, privacy routing, and auto-enroll.
+// Gemini conversion is NOT in this pass (see GO_API_CONTRACT.md §7).
 package gateway
 
 import (
@@ -19,8 +19,11 @@ import (
 	"sync"
 	"time"
 
+	"github.com/wxm0394/Switchyard/internal/kaggle"
 	"github.com/wxm0394/Switchyard/internal/scheduler"
 	"github.com/wxm0394/Switchyard/internal/store"
+	"github.com/wxm0394/Switchyard/internal/toolargs"
+	"github.com/wxm0394/Switchyard/internal/toolrescue"
 	"github.com/wxm0394/Switchyard/internal/upstream"
 	"github.com/wxm0394/Switchyard/internal/validator"
 )
@@ -35,6 +38,10 @@ type Gateway struct {
 	Store    store.Store
 	Cfg      Config
 	Rotator  *scheduler.Rotator
+	// Kaggle is the Phase 5 Kaggle timer refresher. Nil means the
+	// timer is not configured for this instance; the admin Kaggle
+	// endpoints then report honestly instead of faking a result.
+	Kaggle   *kaggle.Refresher
 	mu       sync.Mutex
 	rateWin  map[string]*rateWindow
 	halfOpen map[string]time.Time
@@ -487,7 +494,10 @@ func (g *Gateway) HandleChat(w http.ResponseWriter, r *http.Request) {
 		TaskHeader: r.Header.Get("X-Router-Task"), PrivateHeader: r.Header.Get("X-Router-Private"),
 		Model: stringVal(raw["model"]), Messages: msgs, ToolsJSONLen: toolsLen,
 		HasTools: toolsLen > 0, HasJSONMode: rfType == "json_object" || rfType == "json_schema",
-		PrivacyMode: cfg.PrivacyMode, HeaderSession: r.Header.Get("X-Session-Id"),
+		// Privacy mode is normalized to off/low/high here (and
+		// defensively inside Classify): an empty or invalid stored
+		// mode fails closed to off, per user order, not to high.
+		PrivacyMode: scheduler.EffectivePrivacyMode(cfg.PrivacyMode), HeaderSession: r.Header.Get("X-Session-Id"),
 		MetaSession: metaSession(raw), RequestID: newRequestID(),
 	})
 	// Model resolution.
@@ -601,19 +611,37 @@ func (g *Gateway) HandleChat(w http.ResponseWriter, r *http.Request) {
 			lastStatus = status
 			continue
 		}
-		// Validator (non-streaming only; streaming is passed through).
+		// Non-streaming repair, in Node adapters.ts order: tool-rescue
+		// first, then tool-args, then the validator runs on the
+		// repaired body. Streaming responses are passed through
+		// untouched: rescue and args never touch a stream. Both
+		// repairs fail open (original body unchanged on any doubt)
+		// and never trigger failover by themselves; a validator
+		// failure after repair still fails over, as in Node.
 		if !stream {
 			declared := []string{}
+			toolDefs := []toolargs.ToolDef{}
 			if t, ok := raw["tools"].([]interface{}); ok {
 				for _, tool := range t {
 					if tm, ok := tool.(map[string]interface{}); ok {
 						if fn, ok := tm["function"].(map[string]interface{}); ok {
 							if name, ok := fn["name"].(string); ok {
 								declared = append(declared, name)
+								var params map[string]interface{}
+								if p, ok := fn["parameters"].(map[string]interface{}); ok {
+									params = p
+								}
+								toolDefs = append(toolDefs, toolargs.ToolDef{Name: name, Parameters: params})
 							}
 						}
 					}
 				}
+			}
+			if repaired, _, _ := toolrescue.RescueResponse(respBody, declared); repaired != nil {
+				respBody = repaired
+			}
+			if repaired, _, _ := toolargs.RepairResponse(respBody, toolDefs); repaired != nil {
+				respBody = repaired
 			}
 			vr := validator.Validate(respBody, declared, rfType)
 			if !vr.Valid {
@@ -648,6 +676,12 @@ func (g *Gateway) HandleChat(w http.ResponseWriter, r *http.Request) {
 			UsageSource: "upstream", LatencyMs: latency, StatusCode: 200, ValidatorResult: "pass",
 			PreviewPrompt: previewPrompt(msgs), RequestedModel: rawModel,
 		})
+		// Auto-enroll (Phase 5): a route that just succeeded is proven
+		// working, so it appends at the last position of every alias
+		// it is not already in (vision capability-filtered). This runs
+		// only on confirmed success, never on failure or validator
+		// failure, and a failed enrolment never breaks the response.
+		_ = g.AutoEnrollRoute(cand.Route)
 		if stream {
 			w.Header().Set("Content-Type", "text/event-stream")
 			w.WriteHeader(200)

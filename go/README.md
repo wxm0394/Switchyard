@@ -45,11 +45,16 @@ go vet ./...
 - `internal/store` — Node-compatible SQLite schema (modernc.org/sqlite,
   pure Go) plus an in-memory store used by tests.
 - `internal/gateway` — `/v1/models`, `/v1/chat/completions`,
-  `/api/gateway/*` admin handlers, admin guard, failover, audit.
+  `/api/gateway/*` admin handlers, admin guard, failover, audit,
+  auto-enroll triggers.
+- `internal/toolrescue` — plain-text tool-call rescue (Phase 5).
+- `internal/toolargs` — double-encoding tool-argument repair
+  (Phase 5).
+- `internal/kaggle` — Model Proxy timer + admin status/refresh
+  (Phase 5).
 
 ## Not in this pass
 
-Tool-rescue, tool-args, Kaggle timer, auto-enroll, Gemini
-conversion, onboard batch import, catalog-watch mutation, and any
-deploy/cutover/ladder change. See `GO_API_CONTRACT.md` §7 for the
-deliberate 501s and gaps.
+Gemini conversion, onboard batch import, catalog-watch mutation,
+and any deploy/cutover/ladder change. See `GO_API_CONTRACT.md`
+§7 for the deliberate 501s and gaps.

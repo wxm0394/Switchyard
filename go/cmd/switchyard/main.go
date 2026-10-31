@@ -20,6 +20,7 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"log"
 	"net/http"
@@ -28,6 +29,7 @@ import (
 
 	"github.com/wxm0394/Switchyard/internal/crypto"
 	"github.com/wxm0394/Switchyard/internal/gateway"
+	"github.com/wxm0394/Switchyard/internal/kaggle"
 	"github.com/wxm0394/Switchyard/internal/store"
 )
 
@@ -90,6 +92,34 @@ func main() {
 		return crypto.Decrypt(masterKey, enc)
 	}
 	gw := gateway.New(st, gateway.Config{MasterKey: masterKey, Decrypt: decrypt})
+	// Phase 5: Kaggle timer (built-in component, same process/DB as
+	// the gateway, as in Node) and the startup auto-enroll scan.
+	// The timer only starts when KAGGLE_REFRESH_ENABLED=true; the
+	// auto-enroll scan runs once at startup, as Node does in its
+	// listen callback.
+	kaggleCfg := kaggle.ConfigFromEnv()
+	gw.Kaggle = &kaggle.Refresher{
+		Config: kaggleCfg,
+		Store:  st,
+		Issuer: &kaggle.HTTPIssuer{APIKey: os.Getenv("KAGGLE_API_KEY")},
+		Decrypt: func(enc string) (string, error) {
+			if masterKey == nil {
+				return "", fmt.Errorf("master key is not configured")
+			}
+			return crypto.Decrypt(masterKey, enc)
+		},
+		Encrypt: func(raw string) (string, error) {
+			if masterKey == nil {
+				return "", fmt.Errorf("master key is not configured")
+			}
+			return crypto.Encrypt(masterKey, raw)
+		},
+		Mask: crypto.Mask,
+	}
+	gw.Kaggle.Start(context.Background())
+	if enrolled := gw.AutoEnrollVerifiedRoutes(); len(enrolled) > 0 {
+		log.Printf("[AUTO-ENROLL] startup enrolled %d route(s) into aliases", len(enrolled))
+	}
 	mux := http.NewServeMux()
 	mux.HandleFunc("/v1/models", gw.HandleModels)
 	mux.HandleFunc("/api/v1/models", gw.HandleModels)

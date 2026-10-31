@@ -100,6 +100,15 @@ type Alias struct {
 	CreatedAt     string
 }
 
+// KaggleState mirrors the kaggle_refresh_state table (Node db.ts).
+type KaggleState struct {
+	ProviderKeyID       string
+	ExpiresAt           string
+	LastRefreshAt       string
+	LastError           string
+	ConsecutiveFailures int
+}
+
 type ClientToken struct {
 	ID           string
 	Name         string
@@ -168,6 +177,10 @@ type Store interface {
 	DeleteAlias(id string) error
 	ResetKey429(keyID string) error
 	IncrementTokenUsage(tokenID string, billed int) error
+	GetKeyByName(name string) (scheduler.ProviderKey, bool, error)
+	GetKaggleState(providerKeyID string) (KaggleState, bool, error)
+	UpsertKaggleState(state KaggleState) error
+	UpdateKaggleKey(providerKeyID, encryptedKey, keyMask, expiresAt, lastRefreshAt string) error
 }
 
 // ---- MemStore ----
@@ -181,6 +194,7 @@ type MemStore struct {
 	config  scheduler.SchedulerConfig
 	metrics map[string]scheduler.Metrics
 	quotas  map[string]scheduler.Quota
+	kaggle  map[string]KaggleState
 	aff     map[string]struct {
 		route, key string
 		exp        time.Time
@@ -194,6 +208,7 @@ func NewMemStore() *MemStore {
 		aliases: map[string]Alias{}, tokens: map[string]ClientToken{},
 		config: scheduler.SchedulerConfig{DispatchMode: "auto", WeightsJSON: `{"wSticky":0.35,"wRole":0.30,"wRel":0.20,"wCost":0.10,"wLat":0.05}`, RateLimitRPM: 120, PrivacyMode: "off"},
 		metrics: map[string]scheduler.Metrics{}, quotas: map[string]scheduler.Quota{},
+		kaggle: map[string]KaggleState{},
 		aff: map[string]struct {
 			route, key string
 			exp        time.Time
@@ -481,6 +496,49 @@ func (m *MemStore) DeleteAlias(id string) error {
 		if a.ID == id {
 			delete(m.aliases, name)
 		}
+	}
+	return nil
+}
+func (m *MemStore) GetKeyByName(name string) (scheduler.ProviderKey, bool, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	for _, k := range m.keys {
+		if k.Name == name {
+			return k, true, nil
+		}
+	}
+	return scheduler.ProviderKey{}, false, nil
+}
+func (m *MemStore) GetKaggleState(providerKeyID string) (KaggleState, bool, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	st, ok := m.kaggle[providerKeyID]
+	return st, ok, nil
+}
+func (m *MemStore) UpsertKaggleState(state KaggleState) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.kaggle[state.ProviderKeyID] = state
+	return nil
+}
+
+// UpdateKaggleKey mirrors Node's updateKaggleProviderKey: it encrypts
+// (done by the caller), sets key_state='healthy', clears cooldown, and
+// upserts the refresh state with lastError='' and failures=0. It does
+// NOT touch quota or account notes.
+func (m *MemStore) UpdateKaggleKey(providerKeyID, encryptedKey, keyMask, expiresAt, lastRefreshAt string) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if k, ok := m.keys[providerKeyID]; ok {
+		k.EncryptedKey = encryptedKey
+		k.KeyMask = keyMask
+		k.KeyState = "healthy"
+		k.CooldownUntil = ""
+		m.keys[providerKeyID] = k
+	}
+	m.kaggle[providerKeyID] = KaggleState{
+		ProviderKeyID: providerKeyID, ExpiresAt: expiresAt,
+		LastRefreshAt: lastRefreshAt, LastError: "", ConsecutiveFailures: 0,
 	}
 	return nil
 }
