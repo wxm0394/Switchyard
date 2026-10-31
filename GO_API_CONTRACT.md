@@ -189,6 +189,127 @@ the upstream JSON body returned as-is (with `model` as upstream
 reported it). Validator failures (see §6) are treated as upstream
 failures for failover, not as client errors.
 
+### 2.3 Plan/Act merged entry (Phase 8, user decision 2026-10-31 17:47)
+
+This supersedes the old manual alias-switching rule (Cline used
+to pick coder/fast/reasoning/vision by hand) and supersedes the
+generic content-based auto classifier: the switch is Cline's own
+Plan/Act toggle, and the gateway recognises Plan vs Act purely by
+the model ID Cline sends. No TaskRole re-tagging is used for this
+mapping, and no content classifier decides coder vs reasoning.
+
+Model IDs (exact, case-sensitive as sent by Cline):
+
+- Plan mode model = `reasoning` — the existing reasoning alias,
+  as-is. No new code path: it is ordinary alias resolution (§2.2
+  step 2), with alias scoring + rotation (§5).
+- Act mode model = `act` — a new merged entry, NOT a DB alias
+  row. Resolution, in order, when `model == "act"` and there is
+  no direct pin:
+  1. If a DB alias named `act` exists with targets, use those
+     (operator override via the admin API, no code change).
+  2. Else the synthetic union: coder targets first (in coder
+     order), then any fast-only modelIds in fast order,
+     deduplicated by exact modelId string. Kaggle is first in
+     both coder and fast in production, so Kaggle-first is
+     invariant, not a choice. Coder order is primary because
+     Act mode is execution (tools, edits, terminal): coder
+     priority (Kaggle, qwen, NVIDIA, Groq, ...) is safer than
+     fast priority (Kaggle, qwen, Groq, NVIDIA, ...), which
+     would push small Act requests to the Groq free tier before
+     NVIDIA. Fast-only items, if any, go at the tail so they
+     never displace a coder-order position or its rotation
+     weight.
+  3. The union list then flows through the SAME alias path as
+     coder/fast/reasoning: alias scoring (order base, reliability,
+     latency, quota bonus, failed demotion -500, large-context
+     bonus +25 for 1M models, Groq large guard -200, language
+     capability bonus +50) plus smooth weighted rotation
+     4/3/2/1, Kaggle 60% rotation share cap, and size split
+     (small = whole pool, large = high-capacity only, large
+     excludes Groq from first-pick). Rotation counters are keyed
+     by `act:<sizeClass>`, not by coder/fast separately. Act
+     mode therefore loses none of the alias-mode guarantees.
+- The 4 original alias tables (coder/fast/reasoning/vision) are
+  KEPT as backend pools and as the rollback switch. They are
+  not deleted, and their target lists are not removed. Revert
+  is a one-config change in Cline: set Plan/Act models back to
+  the 4 alias IDs (or any single alias) — no gateway code change,
+  no DB migration, no redeploy.
+- Vision universal: when the request contains an image part,
+  the chosen pool is EXPANDED with vision-alias targets (dedup,
+  chosen pool order first, vision-only additions at the tail)
+  before candidate selection. HardFilter then restricts the
+  expanded pool to vision-capable routes only (plus tools, JSON,
+  context, private, quota filters). In production this adds
+  nothing — Kaggle + laguna-xs are already in coder/fast/
+  reasoning — but if an operator ever removes them from a
+  Plan/Act pool, image requests still find a vision route
+  instead of 503-ing or falling back to a text-only route.
+  Expansion never admits a non-vision route: HardFilter runs
+  after expansion, and a vision route outside the pool is only
+  admitted if it is vision-capable (and passes the other hard
+  filters). If the expanded pool has no healthy vision route,
+  the request returns 503; it does NOT silently fall back to a
+  text-only route, and merged Act does NOT silently fall back
+  to another sub-pool.
+- Audit headers on every chat response (including 503):
+  `x-gateway-pool` = the pool actually used (`act`, an alias
+  name, a direct-pin modelId, or `auto` for the legacy auto
+  path) and `x-gateway-task-type` = the existing classifier
+  output (`vision|reasoning|fast`, informational only for
+  Plan/Act; pool selection does not consult it). Audit rows
+  keep `detected_task_type` = classifier output and
+  `requested_model` = the literal model sent by the client
+  (`reasoning` or `act`), so a misroute is auditable from
+  audit + headers together.
+- Manual override (safety valve only, not the normal UX):
+  direct-pin by exact modelId (model = that modelId, or header
+  `X-Portal-Target-Model`) bypasses Plan/Act pool selection
+  entirely, including the act union and the vision expansion
+  (HardFilter still applies to the pinned route, so pinning a
+  non-vision route for an image request still yields 503).
+  Sending any other alias/modelId directly (e.g. `coder`
+  instead of `act`) is also an override: it uses that alias's
+  targets as-is. `X-Router-Task` and `auto:*` remain available
+  for the legacy auto path and for audit, but they do NOT
+  change Plan/Act pool selection — for Plan/Act, the pool is
+  chosen by the model ID, not by a header.
+- `GET /v1/models` does NOT list `act`: it lists DB aliases
+  only (§2.1). Cline must be configured with the literal model
+  ID `act` (custom model ID), not selected from the models
+  list. This is deliberate: `act` is a synthetic entry whose
+  targets always reflect the current coder/fast orders, so a
+  stale DB alias row cannot go out of sync with them.
+
+Cline template (set once, then only toggle Plan/Act in Cline
+UI — never aliases again). Base URL is Ohio today; at RN
+cutover replace the base URL only, model IDs do not change.
+The token below is a placeholder: use the real single client
+token from the console, never commit a real token here.
+
+```json
+{
+  "baseUrl": "https://railways.astana.qzz.io/v1",
+  "apiKey": "sk-portal-<your-single-client-token>",
+  "planMode": { "model": "reasoning" },
+  "actMode": { "model": "act" }
+}
+```
+
+In Cline UI terms: Plan mode model = `reasoning`, Act mode
+model = `act`, provider base URL =
+`https://railways.astana.qzz.io/v1`, API key = the single client
+token. After this is set, Plan/Act toggling in Cline is the
+only switch the user touches. Rollback: change Act mode model
+back to `coder` (or Plan/Act models back to any of
+`coder`/`fast`/`reasoning`/`vision`) in the same settings.
+
+NOT yet proven by Phase 8 (see PR body): no live upstream test,
+no real Cline battery on RN, no cutover. Phase 8 tests use a
+local mock upstream and fake DBs/keys only, with real token
+burn 0.
+
 ## 3. Admin endpoints (all under /api/gateway, all admin-guarded)
 
 Response envelopes are exactly as Node returns them. Fields named
