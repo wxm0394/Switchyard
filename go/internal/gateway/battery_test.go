@@ -561,8 +561,8 @@ func TestBatteryTimeoutTiers(t *testing.T) {
 	if got := upstream.TimeoutTierFor("r1", "Kaggle GPU Qwen", "qwen3.6-27b", "qwen3.5-9b", "https://llm.example.com/v1", "auto", false); got.TimeoutMs != 120000 || !got.IsColdStart {
 		t.Fatalf("cold-start tier = %+v, want 120000/cold_start", got)
 	}
-	if got := upstream.TimeoutTierFor("r2", "Fast", "fast-model", "fast-model", "https://api.example.com/v1", "fast", true); got.TimeoutMs != 15000 {
-		t.Fatalf("fast streaming tier = %+v, want 15000", got)
+	if got := upstream.TimeoutTierFor("r2", "Fast", "fast-model", "fast-model", "https://api.example.com/v1", "fast", true); got.TimeoutMs != 45000 {
+		t.Fatalf("fast streaming tier = %+v, want 45000", got)
 	}
 	if got := upstream.TimeoutTierFor("r2", "Fast", "fast-model", "fast-model", "https://api.example.com/v1", "fast", false); got.TimeoutMs != 60000 {
 		t.Fatalf("fast non-streaming tier = %+v, want 60000", got)
