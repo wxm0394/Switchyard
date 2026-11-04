@@ -65,7 +65,7 @@ func TimeoutTierFor(routeID, name, modelID, upstreamModel, baseURL, taskRole str
 	}
 	if taskRole == "fast" {
 		if streaming {
-			return TimeoutTier{TimeoutMs: 15000, Tier: "fast"}
+			return TimeoutTier{TimeoutMs: 45000, Tier: "fast"}
 		}
 		return TimeoutTier{TimeoutMs: 60000, Tier: "fast"}
 	}
