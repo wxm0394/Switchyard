@@ -79,11 +79,14 @@ func TestChatToolArgsIntegration(t *testing.T) {
 }
 
 // Streaming responses must pass through untouched: no rescue, no args
-// repair, even when the streamed body contains a function tag.
+// repair, even when the streamed body contains a function tag. The
+// fixture is real SSE: a stream:true request never gets a plain JSON
+// object back from an OpenAI-compatible upstream, and the SSE content
+// check treats a non-SSE body as empty.
 func TestChatStreamingUntouched(t *testing.T) {
 	up := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
-		_, _ = w.Write([]byte(`{"id":"chatcmpl-s","choices":[{"message":{"role":"assistant","content":"<function=get_weather>{}</function>"},"finish_reason":"stop"}],"usage":{"total_tokens":50}}`))
+		w.Header().Set("Content-Type", "text/event-stream")
+		_, _ = w.Write([]byte("data: {\"id\":\"chatcmpl-s\",\"choices\":[{\"delta\":{\"role\":\"assistant\",\"content\":\"<function=get_weather>{}</function>\"}}]}\n\ndata: {\"id\":\"chatcmpl-s\",\"choices\":[{\"delta\":{},\"finish_reason\":\"stop\"}]}\n\ndata: [DONE]\n"))
 	}))
 	defer up.Close()
 	gw, _ := testGateway(t, up.URL+"/v1")
