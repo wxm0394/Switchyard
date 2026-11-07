@@ -340,14 +340,29 @@ func TestBatteryLargeHistory(t *testing.T) {
 func TestBatteryStreamingUntouched(t *testing.T) {
 	// Streaming body already carries tool_calls with double-encoded
 	// args AND a garbled tag in content: both must pass through
-	// byte-identical, no rescue, no args repair.
-	mockBody := toolCallResponse("search", `{"tags": "[\"a\"]"}`)
+	// byte-identical, no rescue, no args repair. The fixture is real
+	// SSE: a stream:true request never gets a plain JSON object back
+	// from an OpenAI-compatible upstream, and the SSE content check
+	// treats a non-SSE body as empty.
+	mockJSON := toolCallResponse("search", `{"tags": "[\"a\"]"}`)
 	// Replace content with a garbled tag as well.
 	var parsed map[string]interface{}
-	_ = json.Unmarshal([]byte(mockBody), &parsed)
-	parsed["choices"].([]interface{})[0].(map[string]interface{})["message"].(map[string]interface{})["content"] = `<function=search>{"tags": ["a"]}</function>`
-	raw, _ := json.Marshal(parsed)
-	mockBody = string(raw)
+	_ = json.Unmarshal([]byte(mockJSON), &parsed)
+	msg := parsed["choices"].([]interface{})[0].(map[string]interface{})["message"].(map[string]interface{})
+	msg["content"] = `<function=search>{"tags": ["a"]}</function>`
+	delta, _ := json.Marshal(map[string]interface{}{
+		"id": "chatcmpl-battery",
+		"choices": []interface{}{map[string]interface{}{
+			"delta": msg, "finish_reason": nil,
+		}},
+	})
+	finish, _ := json.Marshal(map[string]interface{}{
+		"id": "chatcmpl-battery",
+		"choices": []interface{}{map[string]interface{}{
+			"delta": map[string]interface{}{}, "finish_reason": "tool_calls",
+		}},
+	})
+	mockBody := "data: " + string(delta) + "\n\ndata: " + string(finish) + "\n\ndata: [DONE]\n"
 	up := newBatteryUpstream(t, mockBody)
 	defer up.server.Close()
 	gw, _ := batteryGateway(t, []batterySpec{{id: "m1", model: "test-model", base: up.server.URL + "/v1", tools: true}}, []string{"test-model"})

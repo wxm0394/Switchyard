@@ -718,11 +718,12 @@ func (g *Gateway) HandleChat(w http.ResponseWriter, r *http.Request) {
 		}
 		// Non-streaming repair, in Node adapters.ts order: tool-rescue
 		// first, then tool-args, then the validator runs on the
-		// repaired body. Streaming responses are passed through
-		// untouched: rescue and args never touch a stream. Both
-		// repairs fail open (original body unchanged on any doubt)
-		// and never trigger failover by themselves; a validator
-		// failure after repair still fails over, as in Node.
+		// repaired body. Streaming responses skip rescue, args and the
+		// full validator, but they do get an SSE content presence
+		// check below: an empty stream fails over like a validator
+		// failure. Both repairs fail open (original body unchanged on
+		// any doubt) and never trigger failover by themselves; a
+		// validator failure after repair still fails over, as in Node.
 		if !stream {
 			declared := []string{}
 			toolDefs := []toolargs.ToolDef{}
@@ -759,10 +760,46 @@ func (g *Gateway) HandleChat(w http.ResponseWriter, r *http.Request) {
 				continue
 			}
 		}
+		// Streaming content check: the buffered SSE body must carry at
+		// least one assistant delta with content or a tool_call,
+		// otherwise the upstream "succeeded" with an empty stream and
+		// the client would see nothing. Empty streams fail over
+		// exactly like a validator failure (metric only, no route
+		// penalty); tool-rescue and tool-args still never touch a
+		// stream, and the full validator never runs on SSE.
+		sseUsage := 0
+		if stream {
+			var hasContent bool
+			hasContent, sseUsage = sseStreamContent(respBody)
+			if !hasContent {
+				chain = append(chain, fmt.Sprintf("%s (%s)", cand.Route.ModelID, "fail_empty_content"))
+				_ = g.Store.RecordFailure(cand.Route.ID, cand.Key.ID, "fail_empty_content", "Streaming response carried no assistant content or tool_calls", latency, false)
+				lastStatus = 502
+				continue
+			}
+		}
 		// Success.
 		billed := usage
 		if billed <= 0 {
 			billed = cls.EstimatedTokens
+		}
+		// Audit honesty: only non-streaming responses passed the full
+		// validator. Streaming responses only passed the SSE content
+		// presence check, so they are "unverified". Billed tokens are
+		// upstream usage only when actually parsed (non-streaming
+		// usage, or a usage chunk inside the stream); otherwise they
+		// are the prompt estimate and must say so.
+		validatorResult := "pass"
+		usageSource := "upstream"
+		if stream {
+			validatorResult = "unverified"
+			if sseUsage > 0 {
+				billed = sseUsage
+			} else {
+				usageSource = "estimate"
+			}
+		} else if usage <= 0 {
+			usageSource = "estimate"
 		}
 		_ = g.Store.RecordSuccess(cand.Route.ID, cand.Key.ID, billed, 0, latency)
 		_ = g.Store.ResetKey429(cand.Key.ID)
@@ -781,7 +818,7 @@ func (g *Gateway) HandleChat(w http.ResponseWriter, r *http.Request) {
 			DetectedTaskType: cls.TaskType, IsPrivate: cls.IsPrivate,
 			SelectedProviderKeyID: cand.Key.ID, SelectedRouteID: cand.Route.ID, SelectedModelID: cand.Route.ModelID,
 			FailoverChainJSON: string(chainJSON), EstimatedTokens: cls.EstimatedTokens, BilledTokens: billed,
-			UsageSource: "upstream", LatencyMs: latency, StatusCode: 200, ValidatorResult: "pass",
+			UsageSource: usageSource, LatencyMs: latency, StatusCode: 200, ValidatorResult: validatorResult,
 			PreviewPrompt: previewPrompt(msgs), RequestedModel: rawModel,
 		})
 		// Auto-enroll (Phase 5): a route that just succeeded is proven
@@ -945,11 +982,66 @@ func (g *Gateway) applyFailure(cand scheduler.Candidate, uerr *upstream.Error, s
 	}
 }
 
+// sseStreamContent inspects a buffered SSE response body (already fully
+// received from upstream, before the gateway re-streams it). It reports
+// whether any data chunk carried assistant content (a non-blank
+// choices[].delta.content) or a tool_call, and captures a usage chunk's
+// total_tokens when present (OpenAI streams emit usage only when the
+// client asked for stream_options.include_usage). Lines that are not
+// "data:" payloads, "[DONE]", or malformed JSON are skipped; a body
+// with no content-bearing chunk is empty even if it parsed cleanly.
+func sseStreamContent(body []byte) (bool, int) {
+	hasContent := false
+	usageTokens := 0
+	for _, line := range strings.Split(string(body), "\n") {
+		line = strings.TrimSpace(line)
+		if !strings.HasPrefix(line, "data:") {
+			continue
+		}
+		payload := strings.TrimSpace(strings.TrimPrefix(line, "data:"))
+		if payload == "" || payload == "[DONE]" {
+			continue
+		}
+		var chunk struct {
+			Choices []struct {
+				Delta struct {
+					Content   string `json:"content"`
+					ToolCalls []struct {
+						ID string `json:"id"`
+					} `json:"tool_calls"`
+				} `json:"delta"`
+			} `json:"choices"`
+			Usage *struct {
+				TotalTokens      int `json:"total_tokens"`
+				PromptTokens     int `json:"prompt_tokens"`
+				CompletionTokens int `json:"completion_tokens"`
+			} `json:"usage"`
+		}
+		if err := json.Unmarshal([]byte(payload), &chunk); err != nil {
+			continue
+		}
+		for _, ch := range chunk.Choices {
+			if strings.TrimSpace(ch.Delta.Content) != "" || len(ch.Delta.ToolCalls) > 0 {
+				hasContent = true
+			}
+		}
+		if chunk.Usage != nil {
+			if chunk.Usage.TotalTokens > 0 {
+				usageTokens = chunk.Usage.TotalTokens
+			} else if p, c := chunk.Usage.PromptTokens, chunk.Usage.CompletionTokens; p > 0 || c > 0 {
+				usageTokens = p + c
+			}
+		}
+	}
+	return hasContent, usageTokens
+}
+
 // callUpstream forwards to the route's base URL + /chat/completions
 // with the route's upstream model substituted. It returns
 // (status, body, billedTokens, upstreamError). Streaming bodies are
-// returned whole (the caller re-streams them); chunk-level watchdog
-// semantics are a documented Phase 3 gap for SSE (see contract).
+// returned whole; the caller checks the buffered SSE body for content
+// before re-streaming it. Chunk-level watchdog semantics remain a
+// documented Phase 3 gap for SSE (see contract).
 func (g *Gateway) callUpstream(cand scheduler.Candidate, origBody []byte, raw map[string]interface{}, stream bool, timeoutMs int) (int, []byte, int, *upstream.Error) {
 	key, err := g.decrypt(cand.Key.EncryptedKey)
 	if err != nil {
