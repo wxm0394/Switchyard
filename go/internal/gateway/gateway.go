@@ -251,9 +251,9 @@ func (g *Gateway) loadFleet() (routes []scheduler.Route, keys map[string]schedul
 }
 
 // effectiveStateWithHeal mirrors Node getEffectiveState, including
-// key cooldown auto-heal (cooldownUntil passed -> healthy) and
-// circuit open -> half_open transition. It updates the store for
-// transitions it performs.
+// key cooldown auto-heal (cooldownUntil passed -> healthy), exhausted
+// key auto-heal when its cooldown date has passed, and circuit open ->
+// half_open transition. It updates the store for transitions it performs.
 func (g *Gateway) effectiveStateWithHeal(route scheduler.Route, key *scheduler.ProviderKey) string {
 	if !route.Enabled || route.RouteState == "disabled" {
 		return "disabled"
@@ -280,7 +280,23 @@ func (g *Gateway) effectiveStateWithHeal(route scheduler.Route, key *scheduler.P
 		}
 	}
 	if key.KeyState == "exhausted" {
-		return "exhausted"
+		// Daily-limit exhaustion heals once its cooldown date passes,
+		// using the same store call the admin key-reset endpoint uses
+		// (healthy + clear cooldown, consecutive_429 untouched). This
+		// is persisted, not memory-only, so the next request and the
+		// admin panel see the healed state — same as the cooldown and
+		// route-block heals above. A key exhausted without a cooldown
+		// date has nothing to heal from and stays exhausted.
+		if key.CooldownUntil != "" {
+			if t, err := time.Parse(time.RFC3339, key.CooldownUntil); err == nil && !time.Now().Before(t) {
+				_ = g.Store.UpdateKeyState(key.ID, "healthy", "", false)
+				key.KeyState = "healthy"
+			} else {
+				return "exhausted"
+			}
+		} else {
+			return "exhausted"
+		}
 	}
 	if route.RouteState == "unavailable_for_key" {
 		if route.UnavailableUntil != "" {
