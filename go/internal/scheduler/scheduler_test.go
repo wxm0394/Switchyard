@@ -1,6 +1,9 @@
 package scheduler
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
+	"strings"
 	"testing"
 )
 
@@ -159,5 +162,65 @@ func TestClassify(t *testing.T) {
 	cls = Classify(ClassifyInput{Model: "coder", Messages: []Message{{Role: "user", Content: "hi"}}, PrivateHeader: "true", PrivacyMode: "high", RequestID: "x"})
 	if !cls.IsPrivate {
 		t.Fatal("privacy high must honour the private header")
+	}
+}
+
+// Derived session key: clients that send no session header or
+// metadata (e.g. Roo) get a stable key from the client token ID +
+// a hash of the first user message, so affinity can stick a
+// conversation to one model. Only the hash is stored; the raw text
+// never appears in the key.
+func TestClassifyDerivedSessionKey(t *testing.T) {
+	msgs := []Message{{Role: "user", Content: "refactor the billing module"}}
+	cls := Classify(ClassifyInput{Model: "coder", Messages: msgs, PrivacyMode: "off", RequestID: "r1", ClientTokenID: "tok-vibe-master"})
+	if !cls.IsExplicitSession {
+		t.Fatal("derived session must be explicit so affinity read/write applies")
+	}
+	if !strings.HasPrefix(cls.SessionKey, "derived_tok-vibe-master_") {
+		t.Fatalf("derived key = %q, want prefix derived_tok-vibe-master_", cls.SessionKey)
+	}
+	if strings.Contains(cls.SessionKey, "refactor the billing module") {
+		t.Fatalf("derived key must not contain message text: %q", cls.SessionKey)
+	}
+	sum := sha256.Sum256([]byte("refactor the billing module"))
+	want := "derived_tok-vibe-master_" + hex.EncodeToString(sum[:])[:16]
+	if cls.SessionKey != want {
+		t.Fatalf("derived key = %q, want %q", cls.SessionKey, want)
+	}
+	// Stable: same token + same first message => same key, even with
+	// a different request ID and a longer history (full resend).
+	cls2 := Classify(ClassifyInput{Model: "coder", Messages: []Message{{Role: "user", Content: "refactor the billing module"}, {Role: "assistant", Content: "ok"}, {Role: "user", Content: "continue"}}, PrivacyMode: "off", RequestID: "r2", ClientTokenID: "tok-vibe-master"})
+	if cls2.SessionKey != cls.SessionKey {
+		t.Fatalf("same conversation must derive the same key: %q vs %q", cls2.SessionKey, cls.SessionKey)
+	}
+	// Different first message => different key.
+	cls3 := Classify(ClassifyInput{Model: "coder", Messages: []Message{{Role: "user", Content: "write unit tests"}}, PrivacyMode: "off", RequestID: "r3", ClientTokenID: "tok-vibe-master"})
+	if cls3.SessionKey == cls.SessionKey {
+		t.Fatal("different first message must derive a different key")
+	}
+	// Different token => different key.
+	cls4 := Classify(ClassifyInput{Model: "coder", Messages: msgs, PrivacyMode: "off", RequestID: "r4", ClientTokenID: "tok-other"})
+	if cls4.SessionKey == cls.SessionKey {
+		t.Fatal("different token must derive a different key")
+	}
+	// System message first: the first *user* message still seeds it.
+	cls5 := Classify(ClassifyInput{Model: "coder", Messages: []Message{{Role: "system", Content: "you are helpful"}, {Role: "user", Content: "refactor the billing module"}}, PrivacyMode: "off", RequestID: "r5", ClientTokenID: "tok-vibe-master"})
+	if cls5.SessionKey != cls.SessionKey {
+		t.Fatalf("system-first history must derive the same key: %q vs %q", cls5.SessionKey, cls.SessionKey)
+	}
+	// No user message at all => ephemeral fallback, not explicit.
+	cls6 := Classify(ClassifyInput{Model: "coder", Messages: []Message{{Role: "system", Content: "you are helpful"}}, PrivacyMode: "off", RequestID: "r6", ClientTokenID: "tok-vibe-master"})
+	if cls6.IsExplicitSession || cls6.SessionKey != "ephemeral_r6" {
+		t.Fatalf("no user message must fall back to ephemeral: %+v", cls6)
+	}
+	// No token ID => ephemeral fallback, not explicit.
+	cls7 := Classify(ClassifyInput{Model: "coder", Messages: msgs, PrivacyMode: "off", RequestID: "r7"})
+	if cls7.IsExplicitSession || cls7.SessionKey != "ephemeral_r7" {
+		t.Fatalf("no token ID must fall back to ephemeral: %+v", cls7)
+	}
+	// An explicit header session still wins over the derived key.
+	cls8 := Classify(ClassifyInput{Model: "coder", Messages: msgs, PrivacyMode: "off", RequestID: "r8", ClientTokenID: "tok-vibe-master", HeaderSession: "sess-explicit"})
+	if !cls8.IsExplicitSession || cls8.SessionKey != "sess-explicit" {
+		t.Fatalf("header session must win: %+v", cls8)
 	}
 }

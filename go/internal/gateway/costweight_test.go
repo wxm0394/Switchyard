@@ -59,7 +59,7 @@ func TestSelectCandidatesCostWeight(t *testing.T) {
 		keys[k.ID] = k
 	}
 	cls := scheduler.Classification{TaskType: "fast", RoutingMode: "auto", EstimatedTokens: 100}
-	cands := gw.selectCandidates(cls, "", nil, routes, keys, scheduler.SchedulerConfig{})
+	cands, _ := gw.selectCandidates(cls, "", nil, routes, keys, scheduler.SchedulerConfig{})
 	scoreByModel := map[string]float64{}
 	for _, c := range cands {
 		scoreByModel[c.Route.ModelID] = c.Score

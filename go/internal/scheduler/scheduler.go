@@ -5,6 +5,8 @@
 package scheduler
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"math"
 	"regexp"
@@ -292,6 +294,10 @@ type ClassifyInput struct {
 	HeaderSession string
 	MetaSession   string
 	RequestID     string
+	// ClientTokenID is the authenticated portal token's ID (not the
+	// secret value). It seeds the derived session key for clients
+	// that send no session header or metadata.
+	ClientTokenID string
 }
 
 func Classify(in ClassifyInput) Classification {
@@ -336,6 +342,12 @@ func Classify(in ClassifyInput) Classification {
 		sessionKey, explicit = strings.TrimSpace(in.HeaderSession), true
 	} else if strings.TrimSpace(in.MetaSession) != "" {
 		sessionKey, explicit = strings.TrimSpace(in.MetaSession), true
+	} else if key := derivedSessionKey(in.ClientTokenID, in.Messages); key != "" {
+		// Clients that send no session (e.g. Roo) get a stable
+		// derived key so affinity can stick a conversation to one
+		// model. It is explicit: the affinity read/write paths
+		// treat it exactly like a header session.
+		sessionKey, explicit = key, true
 	} else {
 		sessionKey = "ephemeral_" + in.RequestID
 	}
@@ -357,6 +369,32 @@ func Classify(in ClassifyInput) Classification {
 		cls.TaskType = "fast"
 	}
 	return cls
+}
+
+// derivedSessionKey builds a stable session key for clients that send
+// no session header or metadata. The key is the client token ID plus
+// a SHA-256 hash of the first user message (coding clients resend the
+// full history every turn, so the first user message is stable across
+// turns of one conversation). Only the hash is ever stored or logged;
+// the raw message text never leaves the request. Empty when there is
+// no token ID or no user message with text, in which case the caller
+// falls back to an ephemeral key.
+func derivedSessionKey(clientTokenID string, msgs []Message) string {
+	if strings.TrimSpace(clientTokenID) == "" {
+		return ""
+	}
+	for _, m := range msgs {
+		if m.Role != "user" {
+			continue
+		}
+		text := strings.TrimSpace(m.Text())
+		if text == "" {
+			continue
+		}
+		sum := sha256.Sum256([]byte(text))
+		return "derived_" + clientTokenID + "_" + hex.EncodeToString(sum[:])[:16]
+	}
+	return ""
 }
 
 type SizeClass string

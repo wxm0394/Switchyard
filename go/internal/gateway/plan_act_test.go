@@ -209,7 +209,7 @@ func TestActKaggleCap(t *testing.T) {
 			enabled = append(enabled, rt)
 		}
 	}
-	cands := s.gw.selectCandidates(cls, "", union, enabled, keys, scheduler.SchedulerConfig{DispatchMode: "auto", WeightsJSON: `{"wSticky":0.35,"wRole":0.30,"wRel":0.20,"wCost":0.10,"wLat":0.05}`, RateLimitRPM: 120, PrivacyMode: "off"})
+	cands, _ := s.gw.selectCandidates(cls, "", union, enabled, keys, scheduler.SchedulerConfig{DispatchMode: "auto", WeightsJSON: `{"wSticky":0.35,"wRole":0.30,"wRel":0.20,"wCost":0.10,"wLat":0.05}`, RateLimitRPM: 120, PrivacyMode: "off"})
 	if len(cands) == 0 {
 		t.Fatal("no Act candidates")
 	}

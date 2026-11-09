@@ -460,7 +460,12 @@ func TestBatteryRotationDistribution(t *testing.T) {
 	}, []string{"m1", "m2", "m3"})
 	seq := []string{}
 	for i := 0; i < 10; i++ {
-		rec := batteryPost(t, gw, `{"model":"coder","messages":[{"role":"user","content":"hi"}]}`, nil)
+		// Distinct first user message per request: derived sessions
+		// key on (token, first user message), so 10 identical
+		// requests would be one conversation and stick to the first
+		// pick. Rotation distribution is a property of independent
+		// requests, so each round here is its own conversation.
+		rec := batteryPost(t, gw, fmt.Sprintf(`{"model":"coder","messages":[{"role":"user","content":"hi %d"}]}`, i), nil)
 		if rec.Code != 200 {
 			t.Fatalf("request %d status %d body %s", i, rec.Code, rec.Body.String())
 		}
