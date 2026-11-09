@@ -8,12 +8,12 @@ func intPtr(v int) *int { return &v }
 
 func TestEstimateTokens(t *testing.T) {
 	msgs := []Message{{Role: "user", Content: "hello world"}}
-	// ascii 11 * 0.36 * 1.25 = 4.95 -> ceil 5
-	if got := EstimateTokens(msgs, 0); got != 5 {
-		t.Fatalf("ascii estimate = %d, want 5", got)
+	// ascii 11 * 0.28 * 1.10 = 3.388 -> ceil 4
+	if got := EstimateTokens(msgs, 0); got != 4 {
+		t.Fatalf("ascii estimate = %d, want 4", got)
 	}
 	msgs = []Message{{Role: "user", Content: "你好"}}
-	// CJK 2 * 0.68 * 1.25 = 1.7 -> ceil 2
+	// CJK 2 * 0.75 * 1.10 = 1.65 -> ceil 2
 	if got := EstimateTokens(msgs, 0); got != 2 {
 		t.Fatalf("CJK estimate = %d, want 2", got)
 	}

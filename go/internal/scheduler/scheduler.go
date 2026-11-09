@@ -176,8 +176,15 @@ func isCJK(r rune) bool {
 	return (r >= 0x4E00 && r <= 0x9FFF) || (r >= 0x3000 && r <= 0x303F)
 }
 
-// EstimateTokensConservative ports estimateTokensConservative exactly:
-// ceil((CJK*0.68 + ascii*0.36 + toolsJSONLen*0.3) * 1.25).
+// EstimateTokens estimates request tokens from message text and tool
+// definitions. Calibrated 2026-11-09 against live traffic: the old
+// conservative factors (ascii 0.36, x1.25) overestimated code-heavy
+// requests ~1.6x (real ~93k estimated as ~150k), which made HardFilter
+// wrongly exclude 128k routes and thinned the pool to 2-3 routes.
+// New factors keep a ~10% safety margin while tracking real usage;
+// a low estimate only costs a context-overflow failover, while a high
+// estimate wrongly shrinks the pool.
+// ceil((CJK*0.75 + ascii*0.28 + toolsJSONLen*0.25) * 1.10).
 func EstimateTokens(messages []Message, toolsJSONLen int) int {
 	cjk, ascii := 0, 0
 	for _, m := range messages {
@@ -191,9 +198,9 @@ func EstimateTokens(messages []Message, toolsJSONLen int) int {
 	}
 	overhead := 0.0
 	if toolsJSONLen > 0 {
-		overhead = float64(toolsJSONLen) * 0.3
+		overhead = float64(toolsJSONLen) * 0.25
 	}
-	return int(math.Ceil((float64(cjk)*0.68 + float64(ascii)*0.36 + overhead) * 1.25))
+	return int(math.Ceil((float64(cjk)*0.75 + float64(ascii)*0.28 + overhead) * 1.10))
 }
 
 func DetectLanguage(messages []Message) string {
