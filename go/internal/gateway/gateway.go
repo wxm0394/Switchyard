@@ -544,7 +544,7 @@ func (g *Gateway) HandleChat(w http.ResponseWriter, r *http.Request) {
 		// defensively inside Classify): an empty or invalid stored
 		// mode fails closed to off, per user order, not to high.
 		PrivacyMode: scheduler.EffectivePrivacyMode(cfg.PrivacyMode), HeaderSession: r.Header.Get("X-Session-Id"),
-		MetaSession: metaSession(raw), RequestID: newRequestID(),
+		MetaSession: metaSession(raw), RequestID: newRequestID(), ClientTokenID: token.ID,
 	})
 	// Model resolution.
 	rawModel := strings.TrimSpace(stringVal(raw["model"]))
@@ -669,9 +669,9 @@ func (g *Gateway) HandleChat(w http.ResponseWriter, r *http.Request) {
 	}
 	w.Header().Set("x-gateway-pool", poolName)
 	w.Header().Set("x-gateway-task-type", cls.TaskType)
-	candidates := g.selectCandidates(cls, explicitPin, aliasTargets, enabledRoutes, keys, cfg)
+	candidates, affinityPinned := g.selectCandidates(cls, explicitPin, aliasTargets, enabledRoutes, keys, cfg)
 	if len(candidates) == 0 && len(aliasTargets) > 0 && explicitPin == "" && isImplicit {
-		candidates = g.selectCandidates(cls, "", nil, enabledRoutes, keys, cfg)
+		candidates, affinityPinned = g.selectCandidates(cls, "", nil, enabledRoutes, keys, cfg)
 		if len(candidates) > 0 {
 			w.Header().Set("x-gateway-alias-fallback", "auto")
 		}
@@ -685,12 +685,16 @@ func (g *Gateway) HandleChat(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	// Rotation: first pick only, failover keeps scored order.
+	// Skipped when alias affinity pinned a route: rotation would
+	// otherwise rotate the sticky first pick away on the next round
+	// (per-route currents persist across requests), defeating the
+	// pin. No-affinity requests rotate exactly as before.
 	poolKey := requestedModel
 	if explicitPin != "" {
 		poolKey = explicitPin
 	}
 	ordered := candidates
-	if explicitPin == "" && len(aliasTargets) > 0 {
+	if explicitPin == "" && len(aliasTargets) > 0 && !affinityPinned {
 		billedByKey := map[string]int{}
 		for _, c := range candidates {
 			q, _ := g.Store.GetQuota(c.Key.ID)
@@ -858,7 +862,7 @@ func (g *Gateway) HandleChat(w http.ResponseWriter, r *http.Request) {
 	openAIError(w, 502, "Upstream failed on all candidates: "+strings.Join(chain, "; "), "upstream_error", "all_candidates_failed")
 }
 
-func (g *Gateway) selectCandidates(cls scheduler.Classification, explicitPin string, aliasTargets []string, routes []scheduler.Route, keys map[string]scheduler.ProviderKey, cfg scheduler.SchedulerConfig) []scheduler.Candidate {
+func (g *Gateway) selectCandidates(cls scheduler.Classification, explicitPin string, aliasTargets []string, routes []scheduler.Route, keys map[string]scheduler.ProviderKey, cfg scheduler.SchedulerConfig) ([]scheduler.Candidate, bool) {
 	if cls.RoutingMode == "auto" {
 		aliasTargets = nil
 	}
@@ -937,7 +941,28 @@ func (g *Gateway) selectCandidates(cls scheduler.Classification, explicitPin str
 	// is preserved for equal scores because Go sort is stable here
 	// only if we use a stable sort; see below).
 	sortCandidates(out)
-	return out
+	// Alias affinity: the Auto branch scores stickiness, but alias
+	// branches never did, so a conversation could rotate to a
+	// different model every round. When a stored affinity points at
+	// a route that is in this alias pool and survived HardFilter and
+	// the health checks (it is in `out`), pin it first. A route that
+	// failed those checks is not in `out` and is never forced.
+	// The caller skips rotation when this pins, so the affinity
+	// route stays first instead of being rotated away.
+	affinityPinned := false
+	if len(aliasTargets) > 0 && affRouteID != "" {
+		for i := range out {
+			if out[i].Route.ID == affRouteID {
+				out[i].IsSticky = true
+				aff := out[i]
+				copy(out[1:i+1], out[0:i])
+				out[0] = aff
+				affinityPinned = true
+				break
+			}
+		}
+	}
+	return out, affinityPinned
 }
 
 func clamp01(v float64) float64 {
