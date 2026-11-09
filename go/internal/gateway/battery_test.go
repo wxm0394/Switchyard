@@ -291,10 +291,10 @@ func TestBatteryToolArgs(t *testing.T) {
 }
 
 func TestBatteryLargeHistory(t *testing.T) {
-	// ~162,000 ASCII chars -> estimated ceil(162000*0.36*1.25) = 72,900
-	// tokens, well over the 70k Cline shape and over the 32,000 large
-	// threshold. Groq must not be first-picked for a large request,
-	// and a 32k-context route must be filtered out entirely.
+	// ~162,000 ASCII chars -> estimated ceil(162024*0.28*1.10) = 49,904
+	// tokens, well over the 32,000 large threshold. Groq must not be
+	// first-picked for a large request, and a 32k-context route must
+	// be filtered out entirely.
 	big := strings.Repeat("The quick brown fox jumps over the lazy dog. ", 3600)
 	if len(big) < 150000 {
 		t.Fatalf("large fixture too small: %d", len(big))
@@ -326,8 +326,8 @@ func TestBatteryLargeHistory(t *testing.T) {
 	if len(logs) != 1 {
 		t.Fatalf("expected 1 audit row, got %d", len(logs))
 	}
-	if logs[0].EstimatedTokens <= 70000 {
-		t.Fatalf("estimated tokens = %d, want > 70000", logs[0].EstimatedTokens)
+	if logs[0].EstimatedTokens <= 45000 {
+		t.Fatalf("estimated tokens = %d, want > 45000", logs[0].EstimatedTokens)
 	}
 	if logs[0].SelectedModelID != "normal-model" {
 		t.Fatalf("large first pick = %s, want normal-model (Groq excluded, 32k route filtered)", logs[0].SelectedModelID)
