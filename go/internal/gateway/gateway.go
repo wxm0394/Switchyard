@@ -1008,7 +1008,34 @@ func (g *Gateway) applyFailure(cand scheduler.Candidate, uerr *upstream.Error, s
 		}
 		_ = g.Store.RecordFailure(cand.Route.ID, cand.Key.ID, string(uerr.Category), uerr.Message, latency, false)
 	case upstream.CategoryQuotaExhausted:
-		_ = g.Store.UpdateKeyState(cand.Key.ID, "exhausted", "", false)
+		// 429-driven quota errors must auto-heal: a bare "exhausted" with
+		// an empty cooldown never heals (effectiveStateWithHeal has nothing
+		// to heal from), so a transient upstream 429 — e.g. ModelScope's
+		// "insufficient_quota" rate limit, which is NOT a real daily-quota
+		// exhaustion — permanently killed the key until a manual reset.
+		// Give it the same dated doubling backoff as a non-daily 429
+		// (60s, doubling per consecutive 429, cap 900s; Retry-After wins),
+		// so the key recovers on its own. A genuinely exhausted daily
+		// quota simply re-429s after the cooldown and backs off again,
+		// recovering automatically when the quota refreshes.
+		secs := 60
+		if uerr.RetryAfter != nil && *uerr.RetryAfter > 0 {
+			secs = *uerr.RetryAfter
+		} else {
+			n := cand.Key.Consecutive429 + 1
+			secs = 60
+			for i := 1; i < n; i++ {
+				secs *= 2
+				if secs >= 900 {
+					secs = 900
+					break
+				}
+			}
+			if secs > 900 {
+				secs = 900
+			}
+		}
+		_ = g.Store.UpdateKeyState(cand.Key.ID, "exhausted", time.Now().Add(time.Duration(secs)*time.Second).Format(time.RFC3339), true)
 		_ = g.Store.RecordFailure(cand.Route.ID, cand.Key.ID, string(uerr.Category), uerr.Message, latency, false)
 	case upstream.CategoryAuthInvalid:
 		_ = g.Store.UpdateKeyState(cand.Key.ID, "disabled", "", false)
