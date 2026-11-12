@@ -164,6 +164,7 @@ type Store interface {
 	RecordFailure(routeID, keyID, errorCode, errorMsg string, latencyMs int, infra bool) error
 	UpdateKeyState(keyID, state, cooldownUntil string, inc429 bool) error
 	UpdateRouteState(routeID, state, unavailableUntil string) error
+	DisableRoute(routeID string) error
 	UpdateCircuit(routeID, state, opensUntil string, timeouts, fivexx int) error
 	AddAudit(row AuditRow) error
 	ListAudit(limit, offset int) ([]AuditRow, error)
@@ -407,6 +408,15 @@ func (m *MemStore) UpdateRouteState(routeID, state, until string) error {
 	if r, ok := m.routes[routeID]; ok {
 		r.RouteState = state
 		r.UnavailableUntil = until
+		m.routes[routeID] = r
+	}
+	return nil
+}
+func (m *MemStore) DisableRoute(routeID string) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if r, ok := m.routes[routeID]; ok {
+		r.Enabled = false
 		m.routes[routeID] = r
 	}
 	return nil

@@ -1043,6 +1043,14 @@ func (g *Gateway) applyFailure(cand scheduler.Candidate, uerr *upstream.Error, s
 	case upstream.CategoryModelForbidden:
 		_ = g.Store.UpdateRouteState(cand.Route.ID, "unavailable_for_key", time.Now().Add(12*time.Hour).Format(time.RFC3339))
 		_ = g.Store.RecordFailure(cand.Route.ID, cand.Key.ID, string(uerr.Category), uerr.Message, latency, false)
+	case upstream.CategoryModelGone:
+		// The model is gone for good (HTTP 410: retired/removed upstream).
+		// Disable the route so it is never tried again; an admin can
+		// re-enable it from the panel if the model ever comes back.
+		// Without this, a dead route burns failover time on every
+		// request until someone notices and cleans it up by hand.
+		_ = g.Store.DisableRoute(cand.Route.ID)
+		_ = g.Store.RecordFailure(cand.Route.ID, cand.Key.ID, string(uerr.Category), uerr.Message, latency, false)
 	case upstream.CategoryTimeout, upstream.CategoryServerError:
 		_ = g.Store.RecordFailure(cand.Route.ID, cand.Key.ID, string(uerr.Category), uerr.Message, latency, true)
 	default:
