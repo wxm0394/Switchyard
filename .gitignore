@@ -7,3 +7,11 @@
 /magpie-dev-backend
 /magpie-dev.new
 /internal/update/launcher-*.com
+
+# Secrets & local state - never commit
+.env
+*.db
+*.sqlite
+*.key
+*.pem
+*.token
