@@ -57,10 +57,11 @@ func TestEffectiveStateExhaustedHeal(t *testing.T) {
 		wantCool  string // expected stored cooldown_until after the call
 	}{
 		{"exhausted expired cooldown heals", "exhausted", past, "healthy", "healthy", ""},
-		{"exhausted no cooldown stays exhausted", "exhausted", "", "exhausted", "exhausted", ""},
+		{"exhausted no cooldown heals (NULL date treated as expired)", "exhausted", "", "healthy", "healthy", ""},
 		{"exhausted future cooldown stays exhausted", "exhausted", future, "exhausted", "exhausted", future},
 		{"exhausted unparsable cooldown stays exhausted", "exhausted", "not-a-date", "exhausted", "exhausted", "not-a-date"},
 		{"cooldown expired still heals (regression guard)", "cooldown", past, "healthy", "healthy", ""},
+		{"cooldown no cooldown heals (NULL date treated as expired)", "cooldown", "", "healthy", "healthy", ""},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
