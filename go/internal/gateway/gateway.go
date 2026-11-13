@@ -268,13 +268,18 @@ func (g *Gateway) effectiveStateWithHeal(route scheduler.Route, key *scheduler.P
 		return "unconfigured"
 	}
 	if key.KeyState == "cooldown" {
-		if key.CooldownUntil != "" {
-			if t, err := time.Parse(time.RFC3339, key.CooldownUntil); err == nil && !time.Now().Before(t) {
-				_ = g.Store.UpdateKeyState(key.ID, "healthy", "", false)
-				key.KeyState = "healthy"
-			} else {
-				return "cooldown"
-			}
+		// A cooldown with no date recorded (pre-PR#13 rows left the
+		// date NULL) has nothing to wait for: treat the missing date
+		// as already expired and heal on next request. If the
+		// upstream is truly still limiting, the next 429 re-cools it
+		// with a dated backoff (PR #13), so a dead key cannot spin
+		// in a tight retry loop.
+		if key.CooldownUntil == "" {
+			_ = g.Store.UpdateKeyState(key.ID, "healthy", "", false)
+			key.KeyState = "healthy"
+		} else if t, err := time.Parse(time.RFC3339, key.CooldownUntil); err == nil && !time.Now().Before(t) {
+			_ = g.Store.UpdateKeyState(key.ID, "healthy", "", false)
+			key.KeyState = "healthy"
 		} else {
 			return "cooldown"
 		}
@@ -285,15 +290,20 @@ func (g *Gateway) effectiveStateWithHeal(route scheduler.Route, key *scheduler.P
 		// (healthy + clear cooldown, consecutive_429 untouched). This
 		// is persisted, not memory-only, so the next request and the
 		// admin panel see the healed state — same as the cooldown and
-		// route-block heals above. A key exhausted without a cooldown
-		// date has nothing to heal from and stays exhausted.
-		if key.CooldownUntil != "" {
-			if t, err := time.Parse(time.RFC3339, key.CooldownUntil); err == nil && !time.Now().Before(t) {
-				_ = g.Store.UpdateKeyState(key.ID, "healthy", "", false)
-				key.KeyState = "healthy"
-			} else {
-				return "exhausted"
-			}
+		// route-block heals above.
+		// A key exhausted without a cooldown date (pre-PR#13 rows left
+		// the date NULL) previously stayed exhausted forever, because
+		// there was nothing to heal from. Treat the missing date as
+		// already expired and heal it on next request instead: if the
+		// upstream is truly out of quota, the next 429 re-cools it with
+		// a dated backoff (PR #13), so a dead key cannot spin in a
+		// tight retry loop.
+		if key.CooldownUntil == "" {
+			_ = g.Store.UpdateKeyState(key.ID, "healthy", "", false)
+			key.KeyState = "healthy"
+		} else if t, err := time.Parse(time.RFC3339, key.CooldownUntil); err == nil && !time.Now().Before(t) {
+			_ = g.Store.UpdateKeyState(key.ID, "healthy", "", false)
+			key.KeyState = "healthy"
 		} else {
 			return "exhausted"
 		}
@@ -1008,16 +1018,16 @@ func (g *Gateway) applyFailure(cand scheduler.Candidate, uerr *upstream.Error, s
 		}
 		_ = g.Store.RecordFailure(cand.Route.ID, cand.Key.ID, string(uerr.Category), uerr.Message, latency, false)
 	case upstream.CategoryQuotaExhausted:
-		// 429-driven quota errors must auto-heal: a bare "exhausted" with
-		// an empty cooldown never heals (effectiveStateWithHeal has nothing
-		// to heal from), so a transient upstream 429 — e.g. ModelScope's
-		// "insufficient_quota" rate limit, which is NOT a real daily-quota
-		// exhaustion — permanently killed the key until a manual reset.
-		// Give it the same dated doubling backoff as a non-daily 429
-		// (60s, doubling per consecutive 429, cap 900s; Retry-After wins),
-		// so the key recovers on its own. A genuinely exhausted daily
-		// quota simply re-429s after the cooldown and backs off again,
-		// recovering automatically when the quota refreshes.
+		// 429-driven quota errors must auto-heal with a dated backoff
+		// (60s, doubling per consecutive 429, cap 900s; Retry-After
+		// wins), so the key recovers on its own instead of being
+		// retried on every request. (A bare "exhausted" with an empty
+		// cooldown now also heals on next request — see
+		// effectiveStateWithHeal — but the dated backoff is still
+		// what keeps a genuinely exhausted key from being hammered.)
+		// A genuinely exhausted daily quota simply re-429s after the
+		// cooldown and backs off again, recovering automatically when
+		// the quota refreshes.
 		secs := 60
 		if uerr.RetryAfter != nil && *uerr.RetryAfter > 0 {
 			secs = *uerr.RetryAfter
@@ -1042,6 +1052,14 @@ func (g *Gateway) applyFailure(cand scheduler.Candidate, uerr *upstream.Error, s
 		_ = g.Store.RecordFailure(cand.Route.ID, cand.Key.ID, string(uerr.Category), uerr.Message, latency, false)
 	case upstream.CategoryModelForbidden:
 		_ = g.Store.UpdateRouteState(cand.Route.ID, "unavailable_for_key", time.Now().Add(12*time.Hour).Format(time.RFC3339))
+		_ = g.Store.RecordFailure(cand.Route.ID, cand.Key.ID, string(uerr.Category), uerr.Message, latency, false)
+	case upstream.CategoryModelGone:
+		// The model is gone for good (HTTP 410: retired/removed upstream).
+		// Disable the route so it is never tried again; an admin can
+		// re-enable it from the panel if the model ever comes back.
+		// Without this, a dead route burns failover time on every
+		// request until someone notices and cleans it up by hand.
+		_ = g.Store.DisableRoute(cand.Route.ID)
 		_ = g.Store.RecordFailure(cand.Route.ID, cand.Key.ID, string(uerr.Category), uerr.Message, latency, false)
 	case upstream.CategoryTimeout, upstream.CategoryServerError:
 		_ = g.Store.RecordFailure(cand.Route.ID, cand.Key.ID, string(uerr.Category), uerr.Message, latency, true)
