@@ -19,6 +19,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/wxm0394/Multi-Armed-Bandit/bridge"
 	"github.com/wxm0394/Switchyard/internal/kaggle"
 	"github.com/wxm0394/Switchyard/internal/scheduler"
 	"github.com/wxm0394/Switchyard/internal/store"
@@ -42,6 +43,9 @@ type Gateway struct {
 	// timer is not configured for this instance; the admin Kaggle
 	// endpoints then report honestly instead of faking a result.
 	Kaggle   *kaggle.Refresher
+	// Adaptive is the adaptive rotation controller. Nil means adaptive
+	// rotation is off. Set once at startup through SetAdaptive.
+	Adaptive *bridge.Controller
 	mu       sync.Mutex
 	rateWin  map[string]*rateWindow
 	halfOpen map[string]time.Time
@@ -726,6 +730,7 @@ func (g *Gateway) HandleChat(w http.ResponseWriter, r *http.Request) {
 	if v, ok := raw["stream"].(bool); ok {
 		stream = v
 	}
+	sizeClass := scheduler.SizeClassOf(cls.EstimatedTokens)
 	// Try candidates in order, failover before first byte only.
 	var chain []string
 	var lastStatus int
@@ -738,11 +743,14 @@ func (g *Gateway) HandleChat(w http.ResponseWriter, r *http.Request) {
 			defer g.releaseHalfOpen(cand.Route.ID)
 		}
 		tier := upstream.TimeoutTierFor(cand.Route.ID, cand.Route.Name, cand.Route.ModelID, cand.Route.UpstreamModel, cand.Route.BaseURL, cand.Route.TaskRole, stream)
+		attemptStart := time.Now()
 		status, respBody, usage, upstreamErr := g.callUpstream(cand, bodyBytes, raw, stream, tier.TimeoutMs)
+		attemptDur := time.Since(attemptStart)
 		latency := int(time.Since(start).Milliseconds())
 		if upstreamErr != nil {
 			chain = append(chain, fmt.Sprintf("%s (%d %s)", cand.Route.ModelID, status, upstreamErr.Category))
 			g.applyFailure(cand, upstreamErr, status, latency)
+			g.observe(cand, sizeClass, string(upstreamErr.Category), attemptDur, stream)
 			lastStatus = status
 			continue
 		}
@@ -786,6 +794,7 @@ func (g *Gateway) HandleChat(w http.ResponseWriter, r *http.Request) {
 				// failover, but does not penalise the route like a 5xx:
 				// record the metric only (Node: validator failure -> failover).
 				_ = g.Store.RecordFailure(cand.Route.ID, cand.Key.ID, vr.Code, vr.Reason, latency, false)
+				g.observe(cand, sizeClass, bridge.CategoryValidatorFail, attemptDur, stream)
 				lastStatus = 502
 				continue
 			}
@@ -804,6 +813,7 @@ func (g *Gateway) HandleChat(w http.ResponseWriter, r *http.Request) {
 			if !hasContent {
 				chain = append(chain, fmt.Sprintf("%s (%s)", cand.Route.ModelID, "fail_empty_content"))
 				_ = g.Store.RecordFailure(cand.Route.ID, cand.Key.ID, "fail_empty_content", "Streaming response carried no assistant content or tool_calls", latency, false)
+				g.observe(cand, sizeClass, bridge.CategoryEmptyStream, attemptDur, stream)
 				lastStatus = 502
 				continue
 			}
@@ -832,6 +842,7 @@ func (g *Gateway) HandleChat(w http.ResponseWriter, r *http.Request) {
 			usageSource = "estimate"
 		}
 		_ = g.Store.RecordSuccess(cand.Route.ID, cand.Key.ID, billed, 0, latency)
+		g.observe(cand, sizeClass, bridge.CategoryOK, attemptDur, stream)
 		_ = g.Store.ResetKey429(cand.Key.ID)
 		if cls.IsExplicitSession {
 			_ = g.Store.SetAffinity(cls.SessionKey, cand.Route.ID, cand.Key.ID, 1800)
