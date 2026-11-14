@@ -11,6 +11,7 @@ import (
 	"math"
 	"regexp"
 	"strings"
+	"sync"
 	"unicode"
 )
 
@@ -577,7 +578,7 @@ func HardFilter(cls Classification, route Route, quota *Quota) bool {
 	return true
 }
 
-func rotationWeight(pos int) int {
+func rotationWeight(pos int) float64 {
 	switch pos {
 	case 0:
 		return 4
@@ -593,6 +594,7 @@ func rotationWeight(pos int) int {
 // Rotation state is in-process, keyed by poolKey:sizeClass, exactly
 // like Node rotationCurrents. Restart resets distribution only.
 type Rotator struct {
+	mu       sync.Mutex
 	currents map[string]map[string]float64
 }
 
@@ -610,9 +612,7 @@ func (r *Rotator) ReorderForRotation(candidates []Candidate, poolKey string, siz
 	}
 	pool := append([]Candidate{}, candidates...)
 	if size == SizeLarge {
-		filtered := pool[:0]
-		// Build a new slice to avoid mutating the caller's order.
-		filtered = nil
+		filtered := make([]Candidate, 0, len(pool))
 		for _, c := range pool {
 			if !strings.Contains(c.Route.BaseURL, "api.groq.com") {
 				filtered = append(filtered, c)
@@ -630,7 +630,7 @@ func (r *Rotator) ReorderForRotation(candidates []Candidate, poolKey string, siz
 			}
 		}
 		if total > 0 && float64(kaggle)/float64(total) > KaggleRotationShareCap {
-			filtered := []Candidate{}
+			filtered := make([]Candidate, 0, len(pool))
 			for _, c := range pool {
 				if c.Route.ModelID != kaggleModelID {
 					filtered = append(filtered, c)
@@ -643,12 +643,26 @@ func (r *Rotator) ReorderForRotation(candidates []Candidate, poolKey string, siz
 		return candidates
 	}
 	stateKey := poolKey + ":" + string(size)
+
+	r.mu.Lock()
 	currents, ok := r.currents[stateKey]
 	if !ok {
 		currents = map[string]float64{}
 		r.currents[stateKey] = currents
 	}
-	totalWeight := 0
+	// Clean up stale entries: remove route IDs that are no longer in the pool.
+	// This prevents counters from accumulating for routes that have been
+	// disabled, exhausted, or otherwise removed from rotation.
+	alive := make(map[string]bool, len(pool))
+	for _, c := range pool {
+		alive[c.Route.ID] = true
+	}
+	for id := range currents {
+		if !alive[id] {
+			delete(currents, id)
+		}
+	}
+	totalWeight := 0.0
 	type scored struct {
 		c   Candidate
 		cur float64
@@ -658,7 +672,7 @@ func (r *Rotator) ReorderForRotation(candidates []Candidate, poolKey string, siz
 	for idx, c := range pool {
 		w := rotationWeight(idx)
 		totalWeight += w
-		cur := currents[c.Route.ID] + float64(w)
+		cur := currents[c.Route.ID] + w
 		currents[c.Route.ID] = cur
 		scoredList = append(scoredList, scored{c, cur, idx})
 	}
@@ -669,7 +683,9 @@ func (r *Rotator) ReorderForRotation(candidates []Candidate, poolKey string, siz
 			best = s
 		}
 	}
-	currents[best.c.Route.ID] = currents[best.c.Route.ID] - float64(totalWeight)
+	currents[best.c.Route.ID] = currents[best.c.Route.ID] - totalWeight
+	r.mu.Unlock()
+
 	out := []Candidate{best.c}
 	for _, c := range candidates {
 		if c.Route.ID != best.c.Route.ID {
