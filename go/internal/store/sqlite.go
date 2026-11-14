@@ -299,6 +299,15 @@ func (s *SQLiteStore) UpdateRouteState(routeID, state, until string) error {
 	return err
 }
 
+// DisableRoute permanently takes a route out of the candidate pool by
+// clearing its enabled flag. Used for models that are gone for good
+// (HTTP 410). An admin can re-enable the route from the panel if the
+// model ever comes back.
+func (s *SQLiteStore) DisableRoute(routeID string) error {
+	_, err := s.db.Exec(`UPDATE model_routes SET enabled=0 WHERE id=?`, routeID)
+	return err
+}
+
 func (s *SQLiteStore) UpdateCircuit(routeID, state, opens string, timeouts, fivexx int) error {
 	if state == "closed" {
 		_, err := s.db.Exec(`UPDATE model_routes SET circuit_state=?, circuit_opens_until=?, consecutive_timeouts=?, consecutive_5xx=?, consecutive_failures=0 WHERE id=?`, state, nullString(opens), timeouts, fivexx, routeID)
