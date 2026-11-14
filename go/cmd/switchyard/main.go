@@ -6,6 +6,8 @@
 //     use :memory: only for smoke tests, never for production)
 //   GATEWAY_MASTER_KEY (64-char hex, else SHA-256 of the string)
 //   GATEWAY_MASTER_KEY_FILE (default /var/lib/railways/master.key)
+//   SWITCHYARD_ADAPTIVE_ROTATION (off|shadow|on, default off)
+//   SWITCHYARD_ADAPTIVE_STATE_PATH (default adaptive_state.json next to the DB)
 //   GATEWAY_ADMIN_PASSWORD, NODE_ENV, GATEWAY_ALLOW_NO_ADMIN_AUTH,
 //   GATEWAY_ADMIN_ORIGINS (comma-separated), GATEWAY_ALLOWED_HOSTS
 //     (comma-separated)
@@ -25,7 +27,9 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"os/signal"
 	"strings"
+	"syscall"
 
 	"github.com/wxm0394/Switchyard/internal/crypto"
 	"github.com/wxm0394/Switchyard/internal/gateway"
@@ -92,6 +96,15 @@ func main() {
 		return crypto.Decrypt(masterKey, enc)
 	}
 	gw := gateway.New(st, gateway.Config{MasterKey: masterKey, Decrypt: decrypt})
+	if stop := setupAdaptive(gw, dbPath, os.Getenv, log.Printf); stop != nil {
+		sigs := make(chan os.Signal, 1)
+		signal.Notify(sigs, syscall.SIGINT, syscall.SIGTERM)
+		go func() {
+			<-sigs
+			stop() // one last save of the learned state
+			os.Exit(0)
+		}()
+	}
 	// Phase 5: Kaggle timer (built-in component, same process/DB as
 	// the gateway, as in Node) and the startup auto-enroll scan.
 	// The timer only starts when KAGGLE_REFRESH_ENABLED=true; the

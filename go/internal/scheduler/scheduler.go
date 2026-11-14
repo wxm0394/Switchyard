@@ -594,11 +594,43 @@ func rotationWeight(pos int) float64 {
 // Rotation state is in-process, keyed by poolKey:sizeClass, exactly
 // like Node rotationCurrents. Restart resets distribution only.
 type Rotator struct {
+	// WeightFn, when set, may replace the static position weights for one
+	// selection. It is set once at startup, before requests are served, and
+	// only read afterwards. pool is the filtered candidate list in position
+	// order and static holds the static weight of each position (a copy the
+	// callee may keep). Returning nil, a slice of the wrong length, any
+	// non-finite or non-positive value, or panicking all make the rotator use
+	// the static weights, so a faulty hook can never fail a request.
+	WeightFn func(poolKey string, size SizeClass, pool []Candidate, static []float64) []float64
+
 	mu       sync.Mutex
 	currents map[string]map[string]float64
 }
 
 func NewRotator() *Rotator { return &Rotator{currents: map[string]map[string]float64{}} }
+
+// customWeights runs WeightFn and returns its result only when it is usable,
+// otherwise nil. It is called without holding r.mu.
+func (r *Rotator) customWeights(poolKey string, size SizeClass, pool []Candidate, static []float64) (w []float64) {
+	if r.WeightFn == nil {
+		return nil
+	}
+	defer func() {
+		if recover() != nil {
+			w = nil
+		}
+	}()
+	w = r.WeightFn(poolKey, size, pool, append([]float64(nil), static...))
+	if len(w) != len(pool) {
+		return nil
+	}
+	for _, x := range w {
+		if math.IsNaN(x) || math.IsInf(x, 0) || x <= 0 {
+			return nil
+		}
+	}
+	return w
+}
 
 const KaggleRotationShareCap = 0.60
 
@@ -642,6 +674,14 @@ func (r *Rotator) ReorderForRotation(candidates []Candidate, poolKey string, siz
 	if len(pool) == 0 {
 		return candidates
 	}
+	static := make([]float64, len(pool))
+	for idx := range pool {
+		static[idx] = rotationWeight(idx)
+	}
+	weights := static
+	if w := r.customWeights(poolKey, size, pool, static); w != nil {
+		weights = w
+	}
 	stateKey := poolKey + ":" + string(size)
 
 	r.mu.Lock()
@@ -670,7 +710,7 @@ func (r *Rotator) ReorderForRotation(candidates []Candidate, poolKey string, siz
 	}
 	scoredList := make([]scored, 0, len(pool))
 	for idx, c := range pool {
-		w := rotationWeight(idx)
+		w := weights[idx]
 		totalWeight += w
 		cur := currents[c.Route.ID] + w
 		currents[c.Route.ID] = cur
