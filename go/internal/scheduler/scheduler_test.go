@@ -4,6 +4,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"strings"
+	"sync"
 	"testing"
 )
 
@@ -222,5 +223,115 @@ func TestClassifyDerivedSessionKey(t *testing.T) {
 	cls8 := Classify(ClassifyInput{Model: "coder", Messages: msgs, PrivacyMode: "off", RequestID: "r8", ClientTokenID: "tok-vibe-master", HeaderSession: "sess-explicit"})
 	if !cls8.IsExplicitSession || cls8.SessionKey != "sess-explicit" {
 		t.Fatalf("header session must win: %+v", cls8)
+	}
+}
+
+func TestRotationConcurrency(t *testing.T) {
+	r := NewRotator()
+	cands := []Candidate{
+		{Route: Route{ID: "r1", ModelID: "m1"}, Key: ProviderKey{ID: "k1"}},
+		{Route: Route{ID: "r2", ModelID: "m2"}, Key: ProviderKey{ID: "k2"}},
+		{Route: Route{ID: "r3", ModelID: "m3"}, Key: ProviderKey{ID: "k3"}},
+	}
+
+	const goroutines = 10
+	const iterations = 100
+	var wg sync.WaitGroup
+	wg.Add(goroutines)
+
+	for g := 0; g < goroutines; g++ {
+		go func() {
+			defer wg.Done()
+			for i := 0; i < iterations; i++ {
+				out := r.ReorderForRotation(cands, "coder", SizeMedium, "", map[string]int{})
+				if len(out) != 3 {
+					t.Errorf("expected 3 candidates, got %d", len(out))
+				}
+				// Verify picked candidate is one of the valid ones
+				found := false
+				for _, c := range cands {
+					if out[0].Route.ID == c.Route.ID {
+						found = true
+						break
+					}
+				}
+				if !found {
+					t.Errorf("picked unknown candidate: %s", out[0].Route.ID)
+				}
+			}
+		}()
+	}
+	wg.Wait()
+
+	// Verify no panic or data race occurred (run with -race)
+	// Also verify currents map is still valid
+	if len(r.currents) == 0 {
+		t.Fatal("currents map should not be empty after concurrent access")
+	}
+}
+
+func TestRotationCurrentsCleanup(t *testing.T) {
+	r := NewRotator()
+	// Start with 3 candidates
+	cands := []Candidate{
+		{Route: Route{ID: "r1", ModelID: "m1"}, Key: ProviderKey{ID: "k1"}},
+		{Route: Route{ID: "r2", ModelID: "m2"}, Key: ProviderKey{ID: "k2"}},
+		{Route: Route{ID: "r3", ModelID: "m3"}, Key: ProviderKey{ID: "k3"}},
+	}
+
+	// Run a few rotations to build up currents
+	for i := 0; i < 5; i++ {
+		r.ReorderForRotation(cands, "coder", SizeMedium, "", map[string]int{})
+	}
+
+	// Verify all 3 routes have currents
+	stateKey := "coder:" + string(SizeMedium)
+	r.mu.Lock()
+	currents := r.currents[stateKey]
+	r.mu.Unlock()
+	if len(currents) != 3 {
+		t.Fatalf("expected 3 routes in currents, got %d", len(currents))
+	}
+
+	// Now remove r2 from candidates
+	cands2 := []Candidate{
+		{Route: Route{ID: "r1", ModelID: "m1"}, Key: ProviderKey{ID: "k1"}},
+		{Route: Route{ID: "r3", ModelID: "m3"}, Key: ProviderKey{ID: "k3"}},
+	}
+
+	// Run rotations with only 2 candidates
+	for i := 0; i < 5; i++ {
+		r.ReorderForRotation(cands2, "coder", SizeMedium, "", map[string]int{})
+	}
+
+	// Verify r2 is cleaned up from currents
+	r.mu.Lock()
+	currents = r.currents[stateKey]
+	r.mu.Unlock()
+	if _, ok := currents["r2"]; ok {
+		t.Fatalf("stale route r2 should be cleaned up from currents")
+	}
+	if len(currents) != 2 {
+		t.Fatalf("expected 2 routes in currents after cleanup, got %d", len(currents))
+	}
+
+	// Now restore r2
+	cands3 := []Candidate{
+		{Route: Route{ID: "r1", ModelID: "m1"}, Key: ProviderKey{ID: "k1"}},
+		{Route: Route{ID: "r2", ModelID: "m2"}, Key: ProviderKey{ID: "k2"}},
+		{Route: Route{ID: "r3", ModelID: "m3"}, Key: ProviderKey{ID: "k3"}},
+	}
+
+	// Run rotations with all 3 again
+	for i := 0; i < 5; i++ {
+		r.ReorderForRotation(cands3, "coder", SizeMedium, "", map[string]int{})
+	}
+
+	// Verify all 3 routes have currents again
+	r.mu.Lock()
+	currents = r.currents[stateKey]
+	r.mu.Unlock()
+	if len(currents) != 3 {
+		t.Fatalf("expected 3 routes in currents after restore, got %d", len(currents))
 	}
 }
