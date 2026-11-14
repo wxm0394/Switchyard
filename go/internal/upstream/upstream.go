@@ -22,6 +22,7 @@ const (
 	CategoryContentFiltered  Category = "content_filtered"
 	CategoryBadRequest       Category = "bad_request"
 	CategoryUnsupportedParam Category = "unsupported_param"
+	CategoryModelGone        Category = "model_gone"
 )
 
 type Error struct {
@@ -136,6 +137,12 @@ func Normalize(status int, errText string, headers http.Header, errorParam, erro
 		e.Category = CategoryQuotaExhausted
 	case status == 403:
 		e.Category = CategoryModelForbidden
+	case status == 410:
+		// HTTP 410 Gone means the model was retired/removed upstream
+		// for good. It is permanent by definition, so the gateway
+		// auto-disables the route (see applyFailure) instead of
+		// retrying a dead model on every request.
+		e.Category = CategoryModelGone
 	case status == 429:
 		e.Category = CategoryRateLimited
 		if strings.Contains(lower, "day") || strings.Contains(lower, "rpd") || strings.Contains(lower, "daily limit") {
