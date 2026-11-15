@@ -121,6 +121,36 @@ func TestAnthropicModelMapping(t *testing.T) {
 	}
 }
 
+// A tiny max_tokens is floored to 1024 so reasoning models are
+// not starved into empty content (Claude Desktop's model check
+// asks for 10; haiku/10 502d live before this floor).
+func TestTranslateAnthropicRequestMaxTokensFloor(t *testing.T) {
+	for _, tc := range []struct {
+		in   int
+		want int
+	}{
+		{10, 1024},
+		{100, 1024},
+		{1023, 1024},
+		{1024, 1024},
+		{5000, 5000},
+		{0, 4096},
+	} {
+		req := &anthropicRequest{
+			Model:     "claude-haiku-4-5",
+			MaxTokens: tc.in,
+			Messages:  []anthropicMessage{{Role: "user", Content: json.RawMessage(`"hi"`)}},
+		}
+		raw, _, _, err := translateAnthropicRequest(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if raw["max_tokens"] != tc.want {
+			t.Errorf("max_tokens %d -> %v, want %d", tc.in, raw["max_tokens"], tc.want)
+		}
+	}
+}
+
 func TestTranslateAnthropicRequest(t *testing.T) {
 	rawJSON := `{
 		"model": "claude-sonnet-4-5-20250929",
