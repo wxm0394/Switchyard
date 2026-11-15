@@ -138,6 +138,8 @@ func main() {
 	mux.HandleFunc("/api/v1/models", gw.HandleModels)
 	mux.HandleFunc("/v1/chat/completions", gw.HandleChat)
 	mux.HandleFunc("/api/v1/chat/completions", gw.HandleChat)
+	mux.HandleFunc("/v1/messages", gw.HandleAnthropicMessages)
+	mux.HandleFunc("/api/v1/messages", gw.HandleAnthropicMessages)
 	guard := gateway.AdminGuardConfig{
 		Password:       strings.TrimSpace(os.Getenv("GATEWAY_ADMIN_PASSWORD")),
 		Production:     os.Getenv("NODE_ENV") == "production",
