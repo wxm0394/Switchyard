@@ -67,14 +67,14 @@ func TestHandleCostSummaryOK(t *testing.T) {
 	if resp.TotalCostUSD != 0.50 {
 		t.Fatalf("total cost: got %v, want 0.50", resp.TotalCostUSD)
 	}
-	if resp.TotalTokens != 2100000 {
-		t.Fatalf("total tokens: got %d, want 2100000", resp.TotalTokens)
+	if resp.TotalTokens != 2000000 {
+		t.Fatalf("total tokens: got %d, want 2000000 (priced rows only)", resp.TotalTokens)
 	}
-	if resp.TotalRequests != 3 {
-		t.Fatalf("total requests: got %d, want 3", resp.TotalRequests)
+	if resp.TotalRequests != 2 {
+		t.Fatalf("total requests: got %d, want 2 (priced rows only)", resp.TotalRequests)
 	}
-	if resp.UnknownPriceTokens != 100000 {
-		t.Fatalf("unknown price tokens: got %d, want 100000", resp.UnknownPriceTokens)
+	if resp.UnknownPriceTokens != 0 {
+		t.Fatalf("unknown price tokens: got %d, want 0 (NULL rows excluded)", resp.UnknownPriceTokens)
 	}
 	if resp.Note != "参考价，按市价估算，非实际扣费" {
 		t.Fatalf("note: got %q", resp.Note)

@@ -72,6 +72,14 @@ func cstCutoffUTC(nowUTC time.Time, rangeParam string) (string, time.Time) {
 }
 
 // QueryCostSummary queries audit_history (or fallback audit_logs) and aggregates market-reference costs.
+//
+// Rule (user order 2026-11-15): the cost view only ever counts PRICED
+// requests. Rows with cost_usd NULL — no price for the model, or no
+// usage split to price from — are excluded from every aggregate
+// (totals, by-model, by-day, by-client), so everything the view shows
+// is priced and UnknownPriceTokens is always 0. The rows themselves are
+// NOT deleted from audit_history: the usage ledger (token accounting,
+// day tallies) keeps them; only the cost view stops counting them.
 func QueryCostSummary(db *sql.DB, tableName string, rangeParam string, nowUTC time.Time) (CostSummaryResponse, error) {
 	normalizedRange, cutoffUTC := cstCutoffUTC(nowUTC, rangeParam)
 	cutoffISO := cutoffUTC.Format(time.RFC3339)
@@ -84,7 +92,7 @@ func QueryCostSummary(db *sql.DB, tableName string, rangeParam string, nowUTC ti
 		Note:     "参考价，按市价估算，非实际扣费",
 	}
 
-	// 1. Totals & unknown_price_tokens
+	// 1. Totals & unknown_price_tokens (always 0 now: NULL rows are filtered out below)
 	totalsQuery := `
 		SELECT
 			COALESCE(SUM(CASE WHEN cost_usd IS NOT NULL THEN cost_usd ELSE 0 END), 0),
@@ -92,7 +100,7 @@ func QueryCostSummary(db *sql.DB, tableName string, rangeParam string, nowUTC ti
 			COUNT(*),
 			COALESCE(SUM(CASE WHEN cost_usd IS NULL THEN COALESCE(billed_tokens, 0) ELSE 0 END), 0)
 		FROM ` + tableName + `
-		WHERE timestamp >= ?
+		WHERE timestamp >= ? AND cost_usd IS NOT NULL
 	`
 	var rawTotalCost float64
 	if err := db.QueryRow(totalsQuery, cutoffISO).Scan(
@@ -105,16 +113,16 @@ func QueryCostSummary(db *sql.DB, tableName string, rangeParam string, nowUTC ti
 	}
 	resp.TotalCostUSD = roundUSD2(rawTotalCost)
 
-	// 2. Group by model_id (sorted by cost_usd DESC)
+	// 2. Group by model_id (sorted by cost_usd DESC). Only models with at
+	// least one priced row appear: unpriceable models never reach the view.
 	modelQuery := `
 		SELECT
 			COALESCE(NULLIF(selected_model_id, ''), COALESCE(requested_model, 'unknown')) AS model_id,
 			SUM(CASE WHEN cost_usd IS NOT NULL THEN cost_usd ELSE 0 END) AS sum_cost,
-			COUNT(cost_usd) AS known_cost_count,
 			COALESCE(SUM(COALESCE(billed_tokens, 0)), 0) AS sum_tokens,
 			COUNT(*) AS req_count
 		FROM ` + tableName + `
-		WHERE timestamp >= ?
+		WHERE timestamp >= ? AND cost_usd IS NOT NULL
 		GROUP BY model_id
 	`
 	mRows, err := db.Query(modelQuery, cutoffISO)
@@ -126,32 +134,26 @@ func QueryCostSummary(db *sql.DB, tableName string, rangeParam string, nowUTC ti
 	for mRows.Next() {
 		var modelID string
 		var sumCost float64
-		var knownCount int64
 		var tokens, reqs int64
-		if err := mRows.Scan(&modelID, &sumCost, &knownCount, &tokens, &reqs); err != nil {
+		if err := mRows.Scan(&modelID, &sumCost, &tokens, &reqs); err != nil {
 			return resp, err
 		}
-		pInfo, hasPrice := LookupModelPrice(modelID)
+		pInfo, _ := LookupModelPrice(modelID)
 		item := CostModelBreakdown{
 			ModelID:   modelID,
 			Tokens:    tokens,
 			Requests:  reqs,
 			Estimated: pInfo.Estimated,
 		}
-		if knownCount == 0 && !hasPrice {
-			item.PriceUnknown = true
-			item.CostUSD = nil
-		} else {
-			rounded := roundUSD2(sumCost)
-			item.CostUSD = &rounded
-		}
+		// Every group here has at least one priced row (see the WHERE
+		// clause above), so CostUSD is always set; PriceUnknown can no
+		// longer occur and is kept only for response-shape compatibility.
+		rounded := roundUSD2(sumCost)
+		item.CostUSD = &rounded
 		resp.ByModel = append(resp.ByModel, item)
 	}
 
 	sort.Slice(resp.ByModel, func(i, j int) bool {
-		if resp.ByModel[i].PriceUnknown != resp.ByModel[j].PriceUnknown {
-			return !resp.ByModel[i].PriceUnknown
-		}
 		ci := 0.0
 		if resp.ByModel[i].CostUSD != nil {
 			ci = *resp.ByModel[i].CostUSD
@@ -174,7 +176,7 @@ func QueryCostSummary(db *sql.DB, tableName string, rangeParam string, nowUTC ti
 			COALESCE(SUM(COALESCE(billed_tokens, 0)), 0) AS sum_tokens,
 			COUNT(*) AS req_count
 		FROM ` + tableName + `
-		WHERE timestamp >= ?
+		WHERE timestamp >= ? AND cost_usd IS NOT NULL
 		GROUP BY cst_date
 		ORDER BY cst_date ASC
 	`
@@ -202,7 +204,7 @@ func QueryCostSummary(db *sql.DB, tableName string, rangeParam string, nowUTC ti
 			COALESCE(SUM(COALESCE(billed_tokens, 0)), 0) AS sum_tokens,
 			COUNT(*) AS req_count
 		FROM ` + tableName + `
-		WHERE timestamp >= ?
+		WHERE timestamp >= ? AND cost_usd IS NOT NULL
 		GROUP BY client_name
 		ORDER BY sum_cost DESC, sum_tokens DESC
 	`

@@ -34,8 +34,10 @@ func TestCostForUnknownModel(t *testing.T) {
 	}
 }
 
-func TestCostSummaryAggregationAndNullHandling(t *testing.T) {
-	// Scenarios 3 & 4 (Spec 5.1):
+func TestCostSummaryExcludesUnpricedRows(t *testing.T) {
+	// Rule (user order 2026-11-15): the cost view only counts PRICED
+	// requests. Rows with cost_usd NULL — no price, or no usage split —
+	// are excluded from every aggregate, so everything shown is priced.
 	// In-memory SQLite with >= 2 models, >= 3 CST days, and NULL cost_usd rows
 	db, err := sql.Open("sqlite", ":memory:")
 	if err != nil {
@@ -95,14 +97,25 @@ func TestCostSummaryAggregationAndNullHandling(t *testing.T) {
 	if math.Abs(summary.TotalCostUSD-6.84) > 0.001 {
 		t.Fatalf("expected TotalCostUSD=6.84, got %.2f", summary.TotalCostUSD)
 	}
-	if summary.UnknownPriceTokens != 5000000 {
-		t.Fatalf("expected UnknownPriceTokens=5000000, got %d", summary.UnknownPriceTokens)
+	if summary.UnknownPriceTokens != 0 {
+		t.Fatalf("expected UnknownPriceTokens=0 (NULL rows excluded), got %d", summary.UnknownPriceTokens)
 	}
-	if summary.TotalTokens != 10500000 {
-		t.Fatalf("expected TotalTokens=10500000, got %d", summary.TotalTokens)
+	if summary.TotalTokens != 5500000 {
+		t.Fatalf("expected TotalTokens=5500000 (priced rows only), got %d", summary.TotalTokens)
 	}
-	if summary.TotalRequests != 4 {
-		t.Fatalf("expected TotalRequests=4, got %d", summary.TotalRequests)
+	if summary.TotalRequests != 3 {
+		t.Fatalf("expected TotalRequests=3 (priced rows only), got %d", summary.TotalRequests)
+	}
+	if len(summary.ByModel) != 2 {
+		t.Fatalf("expected 2 priced models, got %d: %+v", len(summary.ByModel), summary.ByModel)
+	}
+	for _, m := range summary.ByModel {
+		if m.ModelID == "custom/unpriced-model" {
+			t.Fatalf("unpriced model must not appear in ByModel: %+v", summary.ByModel)
+		}
+		if m.PriceUnknown || m.CostUSD == nil {
+			t.Fatalf("every ByModel row must be priced: %+v", m)
+		}
 	}
 	if len(summary.ByDay) != 3 {
 		t.Fatalf("expected 3 CST days, got %d: %+v", len(summary.ByDay), summary.ByDay)
