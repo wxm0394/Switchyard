@@ -310,6 +310,74 @@ no real Cline battery on RN, no cutover. Phase 8 tests use a
 local mock upstream and fake DBs/keys only, with real token
 burn 0.
 
+### 2.4 POST /v1/messages and POST /api/v1/messages (Anthropic)
+
+Anthropic Messages API compatibility for Claude Code (added
+2026-11-15, PR #21). The gateway routes OpenAI-format requests
+only, so this endpoint translates Anthropic <-> OpenAI at the edge
+(`internal/gateway/anthropic.go`) and then runs the exact same
+`serveChat` pipeline as §2.2: fleet load, rate limit,
+classification, alias/pool resolution, rotation, failover loop,
+audit, cost, auto-enroll. Only the wire formats differ.
+
+Auth: header `x-api-key` first (what Claude Code sends), else
+`Authorization: Bearer <token>`. The value is a Switchyard client
+token (`sk-portal-*`) either way, looked up exactly like §2.2.
+No match -> 401 `{"type":"error","error":{"type":
+"authentication_error","message":...}}`; disabled token -> 403
+`permission_error`; quota exhausted -> 429 `rate_limit_error`.
+Other pipeline errors use the Anthropic error shape with the type
+mapped from the HTTP status: 400 `invalid_request_error`, 429
+`rate_limit_error`, 502/500 `api_error`, 503 `overloaded_error`.
+
+Client config (Claude Code): `ANTHROPIC_BASE_URL` =
+`https://railways.astana.qzz.io` (no `/v1` suffix — Claude Code
+appends `/v1/messages` and `/v1/models` itself; a base URL ending
+in `/v1` produces the doubled `/v1/v1/models` 404 seen
+2026-11-15), `ANTHROPIC_API_KEY` = a client token copied from
+the panel (a dedicated "Claude Code 专用" token exists; the shared
+token works too). Model discovery uses the existing §2.1
+`/v1/models` (OpenAI shape, aliases only); Claude Code's
+connection test only needs a 200 with at least one model.
+
+Model mapping (request `model` -> Switchyard pool):
+`claude-opus-*` -> `reasoning`, `claude-haiku-*` -> `fast`,
+`claude-sonnet-*` and any other `claude-*` -> `coder`. Literal
+alias names (`coder` / `reasoning` / `fast` / `vision` / `act`)
+and exact upstream modelIds pass through unchanged, so a direct
+route pin still works. The response `model` field echoes the
+original Claude model name; the audit row's `RequestedModel` is
+the mapped alias.
+
+Request translation: `system` (string or text blocks) becomes a
+leading OpenAI system message; message content blocks map to
+OpenAI parts (`text` -> text, `image` base64/url -> `image_url`,
+assistant `tool_use` -> `tool_calls`, user `tool_result` ->
+role `tool` messages in block order); `tools` map to OpenAI
+function tools (`input_schema` -> `parameters`); `tool_choice`
+`auto`/`any`/`none`/`tool` -> `auto`/`required`/`none`/
+`{"type":"function",...}`; `max_tokens` (default 4096 when
+absent), `temperature`, `top_p`, `stop_sequences` -> `stop` pass
+through; `stream: true` adds `stream_options.include_usage`
+so the Anthropic `message_delta` can carry real token counts.
+Dropped deliberately: `cache_control`, `thinking` /
+`redacted_thinking` blocks, `metadata`, `service_tier`; unknown
+fields are ignored, never rejected.
+
+Response translation: non-streaming returns an Anthropic
+`message` object (`stop_reason`: tool calls -> `tool_use`,
+`length` -> `max_tokens`, `content_filter` -> `refusal`, else
+`end_turn`; `usage` from the upstream split, else the gateway's
+prompt estimate for input and 0 for output). Streaming returns
+an Anthropic SSE event stream translated from the buffered
+OpenAI SSE body: `message_start` (usage carries the prompt
+estimate), one `content_block_start` / `content_block_delta` /
+`content_block_stop` per text or `tool_use` block (text and tool
+blocks are closed before the other kind opens), then
+`message_delta` (final `stop_reason` + usage: real split when
+the stream carried a usage chunk, else estimate/0) and
+`message_stop`.
+
 ## 3. Admin endpoints (all under /api/gateway, all admin-guarded)
 
 Response envelopes are exactly as Node returns them. Fields named

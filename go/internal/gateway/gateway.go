@@ -189,6 +189,51 @@ func openAIError(w http.ResponseWriter, status int, message, typ, code string) {
 	writeJSON(w, status, map[string]interface{}{"error": map[string]interface{}{"message": message, "type": typ, "code": code}})
 }
 
+// chatError writes a chat-pipeline error in the caller's format: the
+// OpenAI shape for /v1/chat/completions, the Anthropic shape for
+// /v1/messages. The OpenAI branch is byte-identical to openAIError;
+// the Anthropic branch maps the HTTP status to an Anthropic error
+// type (the OpenAI typ/code are ignored there).
+func (g *Gateway) chatError(w http.ResponseWriter, format string, status int, message, typ, code string) {
+	if format == "anthropic" {
+		anthropicError(w, status, message, anthropicErrorType(status))
+		return
+	}
+	openAIError(w, status, message, typ, code)
+}
+
+// chatSuccess writes a successful chat response in the caller's
+// format. The OpenAI branch is byte-identical to the old HandleChat
+// tail; the Anthropic branch translates the buffered OpenAI body
+// (JSON or SSE) into Anthropic Messages format first. A translation
+// failure is reported as a 502 api_error, never as a half-written
+// 200, because nothing has been written yet at this point.
+func (g *Gateway) chatSuccess(w http.ResponseWriter, format string, respBody []byte, stream bool, displayModel string, estPromptTokens int) {
+	if format == "anthropic" {
+		out, err := translateChatResponse(respBody, stream, displayModel, estPromptTokens)
+		if err != nil {
+			anthropicError(w, 502, "failed to translate upstream response: "+err.Error(), "api_error")
+			return
+		}
+		if stream {
+			w.Header().Set("Content-Type", "text/event-stream")
+			w.Header().Set("Cache-Control", "no-cache")
+		} else {
+			w.Header().Set("Content-Type", "application/json")
+		}
+		w.WriteHeader(200)
+		_, _ = w.Write(out)
+		return
+	}
+	if stream {
+		w.Header().Set("Content-Type", "text/event-stream")
+	} else {
+		w.Header().Set("Content-Type", "application/json")
+	}
+	w.WriteHeader(200)
+	_, _ = w.Write(respBody)
+}
+
 func (g *Gateway) checkRateLimit(tokenID string, rpm int) bool {
 	if rpm <= 0 {
 		rpm = 120
@@ -492,7 +537,6 @@ type chatRequest struct {
 }
 
 func (g *Gateway) HandleChat(w http.ResponseWriter, r *http.Request) {
-	start := time.Now()
 	bodyBytes, err := io.ReadAll(io.LimitReader(r.Body, 10*1024*1024))
 	if err != nil {
 		openAIError(w, 400, "failed to read body", "invalid_request_error", "bad_request")
@@ -523,9 +567,26 @@ func (g *Gateway) HandleChat(w http.ResponseWriter, r *http.Request) {
 		openAIError(w, 429, fmt.Sprintf("Token %q has reached its token quota limit (%d / %d).", token.Name, token.UsedTokens, *token.QuotaLimit), "insufficient_quota", "quota_exceeded")
 		return
 	}
+	g.serveChat(w, r, raw, bodyBytes, token, stringVal(raw["model"]), "openai")
+}
+
+// serveChat is the shared chat pipeline for /v1/chat/completions
+// (format "openai") and /v1/messages (format "anthropic"): fleet
+// load, rate limit, classification, alias/pool resolution, rotation,
+// the failover loop, audit, cost and auto-enroll are identical. Only
+// the error and success wire formats differ, via chatError and
+// chatSuccess. displayModel is the model name echoed back to the
+// client (the raw model for OpenAI; the original Claude model name
+// for Anthropic, where routing already used the mapped alias).
+func (g *Gateway) serveChat(w http.ResponseWriter, r *http.Request, raw map[string]interface{}, bodyBytes []byte, token *store.ClientToken, displayModel, format string) {
+	start := time.Now()
 	routes, keys, aliases, cfg, err := g.loadFleet()
 	if err != nil {
-		writeJSON(w, 500, map[string]interface{}{"error": err.Error()})
+		if format == "anthropic" {
+			anthropicError(w, 500, "gateway error: "+err.Error(), "api_error")
+		} else {
+			writeJSON(w, 500, map[string]interface{}{"error": err.Error()})
+		}
 		return
 	}
 	if !g.checkRateLimit(token.ID, cfg.RateLimitRPM) {
@@ -533,7 +594,7 @@ func (g *Gateway) HandleChat(w http.ResponseWriter, r *http.Request) {
 		if rpm <= 0 {
 			rpm = 120
 		}
-		openAIError(w, 429, fmt.Sprintf("Rate limit exceeded (%d RPM). Gateway circuit breaker paused request to protect upstream quota.", rpm), "rate_limit_error", "client_rate_limited")
+		g.chatError(w, format, 429, fmt.Sprintf("Rate limit exceeded (%d RPM). Gateway circuit breaker paused request to protect upstream quota.", rpm), "rate_limit_error", "client_rate_limited")
 		return
 	}
 	// Parse messages for classification (text parts only, image detection).
@@ -695,7 +756,7 @@ func (g *Gateway) HandleChat(w http.ResponseWriter, r *http.Request) {
 		if cls.HasImage {
 			img = "是"
 		}
-		openAIError(w, 503, fmt.Sprintf("没有可用或健康的候选模型。当前任务需求: [%s], 私密需求: [%v], 需要图片支持: [%s]。请在控制台添加对应可用模型或检查 API Key 状态。", cls.TaskType, cls.IsPrivate, img), "no_healthy_route", "no_route_available")
+		g.chatError(w, format, 503, fmt.Sprintf("没有可用或健康的候选模型。当前任务需求: [%s], 私密需求: [%v], 需要图片支持: [%s]。请在控制台添加对应可用模型或检查 API Key 状态。", cls.TaskType, cls.IsPrivate, img), "no_healthy_route", "no_route_available")
 		return
 	}
 	// Rotation: first pick only, failover keeps scored order.
@@ -878,19 +939,11 @@ func (g *Gateway) HandleChat(w http.ResponseWriter, r *http.Request) {
 		// only on confirmed success, never on failure or validator
 		// failure, and a failed enrolment never breaks the response.
 		_ = g.AutoEnrollRoute(cand.Route)
-		if stream {
-			w.Header().Set("Content-Type", "text/event-stream")
-			w.WriteHeader(200)
-			_, _ = w.Write(respBody)
-			return
-		}
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(200)
-		_, _ = w.Write(respBody)
+		g.chatSuccess(w, format, respBody, stream, displayModel, cls.EstimatedTokens)
 		return
 	}
 	_ = lastStatus
-	openAIError(w, 502, "Upstream failed on all candidates: "+strings.Join(chain, "; "), "upstream_error", "all_candidates_failed")
+	g.chatError(w, format, 502, "Upstream failed on all candidates: "+strings.Join(chain, "; "), "upstream_error", "all_candidates_failed")
 }
 
 func (g *Gateway) selectCandidates(cls scheduler.Classification, explicitPin string, aliasTargets []string, routes []scheduler.Route, keys map[string]scheduler.ProviderKey, cfg scheduler.SchedulerConfig) ([]scheduler.Candidate, bool) {
