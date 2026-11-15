@@ -8,6 +8,100 @@ import (
 	"testing"
 )
 
+func TestModelsIncludesClaudeNames(t *testing.T) {
+	gw, _ := testGateway(t, "http://example.invalid/v1")
+	req := httptest.NewRequest(http.MethodGet, "/v1/models", nil)
+	rec := httptest.NewRecorder()
+	gw.HandleModels(rec, req)
+	if rec.Code != 200 {
+		t.Fatalf("models status %d body %s", rec.Code, rec.Body.String())
+	}
+	var body struct {
+		Data []struct {
+			ID          string `json:"id"`
+			DisplayName string `json:"display_name"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
+		t.Fatal(err)
+	}
+	byID := map[string]string{}
+	for _, d := range body.Data {
+		byID[d.ID] = d.DisplayName
+	}
+	// The coder alias is listed, and so is its Claude name (Claude
+	// Desktop discovery only shows claude-* IDs).
+	if _, ok := byID["coder"]; !ok {
+		t.Errorf("models must list coder, got %+v", byID)
+	}
+	if byID["claude-sonnet-4-5"] != "Claude Sonnet 4.5" {
+		t.Errorf("models must list claude-sonnet-4-5 with its display name, got %+v", byID)
+	}
+	// reasoning/fast aliases are absent from this fixture, so their
+	// Claude names must be absent too.
+	if _, ok := byID["claude-opus-4-5"]; ok {
+		t.Errorf("claude-opus-4-5 must not appear without a reasoning alias: %+v", byID)
+	}
+	if _, ok := byID["claude-haiku-4-5"]; ok {
+		t.Errorf("claude-haiku-4-5 must not appear without a fast alias: %+v", byID)
+	}
+}
+
+// A Claude model name sent to the OpenAI endpoint resolves to its
+// pool, so every ID /v1/models lists actually routes somewhere.
+func TestChatClaudeModelMapsToAlias(t *testing.T) {
+	up := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var req map[string]interface{}
+		_ = json.NewDecoder(r.Body).Decode(&req)
+		if req["model"] != "test-model" {
+			t.Errorf("upstream model = %v, want test-model (coder pool)", req["model"])
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"id":"chatcmpl-x","choices":[{"message":{"content":"4"},"finish_reason":"stop"}],"usage":{"total_tokens":195}}`))
+	}))
+	defer up.Close()
+	gw, mem := testGateway(t, up.URL+"/v1")
+	req := httptest.NewRequest(http.MethodPost, "/v1/chat/completions", strings.NewReader(`{"model":"claude-sonnet-4-5-20250929","messages":[{"role":"user","content":"2+2?"}]}`))
+	req.Header.Set("Authorization", "Bearer sk-portal-test")
+	rec := httptest.NewRecorder()
+	gw.HandleChat(rec, req)
+	if rec.Code != 200 {
+		t.Fatalf("chat status %d body %s", rec.Code, rec.Body.String())
+	}
+	logs, _ := mem.ListAudit(10, 0)
+	if len(logs) != 1 || logs[0].RequestedModel != "claude-sonnet-4-5-20250929" {
+		t.Fatalf("audit must keep the original Claude model name, got %+v", logs)
+	}
+}
+
+func TestAnthropicCountTokens(t *testing.T) {
+	gw, _ := testGateway(t, "http://example.invalid/v1")
+	// No key -> 401 Anthropic shape.
+	req := httptest.NewRequest(http.MethodPost, "/v1/messages/count_tokens", strings.NewReader(`{"model":"claude-sonnet-4-5","messages":[{"role":"user","content":"hello world, this is a token-count test"}]}`))
+	rec := httptest.NewRecorder()
+	gw.HandleAnthropicCountTokens(rec, req)
+	if rec.Code != 401 {
+		t.Fatalf("no key status %d, want 401", rec.Code)
+	}
+	// With key -> 200 with a positive estimate; no upstream is called.
+	req = httptest.NewRequest(http.MethodPost, "/v1/messages/count_tokens", strings.NewReader(`{"model":"claude-sonnet-4-5","messages":[{"role":"user","content":"hello world, this is a token-count test"}]}`))
+	req.Header.Set("x-api-key", "sk-portal-test")
+	rec = httptest.NewRecorder()
+	gw.HandleAnthropicCountTokens(rec, req)
+	if rec.Code != 200 {
+		t.Fatalf("count_tokens status %d body %s", rec.Code, rec.Body.String())
+	}
+	var body struct {
+		InputTokens int `json:"input_tokens"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
+		t.Fatal(err)
+	}
+	if body.InputTokens <= 0 {
+		t.Errorf("input_tokens = %d, want > 0", body.InputTokens)
+	}
+}
+
 func TestAnthropicModelMapping(t *testing.T) {
 	cases := map[string]string{
 		"claude-sonnet-4-5-20250929": "coder",

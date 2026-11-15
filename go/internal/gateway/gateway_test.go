@@ -48,8 +48,8 @@ func TestModelsAliasOnly(t *testing.T) {
 	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
 		t.Fatal(err)
 	}
-	if len(body.Data) != 1 || body.Data[0].ID != "coder" {
-		t.Fatalf("models must list aliases only, got %+v", body.Data)
+	if len(body.Data) != 2 || body.Data[0].ID != "coder" || body.Data[1].ID != "claude-sonnet-4-5" {
+		t.Fatalf("models must list the coder alias and its Claude name, got %+v", body.Data)
 	}
 }
 

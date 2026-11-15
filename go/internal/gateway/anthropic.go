@@ -33,6 +33,9 @@ import (
 	"io"
 	"net/http"
 	"strings"
+
+	"github.com/wxm0394/Switchyard/internal/scheduler"
+	"github.com/wxm0394/Switchyard/internal/store"
 )
 
 // ---- Anthropic request types ----
@@ -90,6 +93,32 @@ type anthropicRequest struct {
 
 // ---- handler ----
 
+// authenticateAnthropic validates the x-api-key / Bearer client
+// token for the Anthropic endpoints, writing the Anthropic error
+// shape on failure. Returns the token and true on success.
+func (g *Gateway) authenticateAnthropic(w http.ResponseWriter, r *http.Request) (*store.ClientToken, bool) {
+	// Auth: x-api-key first (Claude Code / Desktop), Bearer as fallback.
+	// The value is a Switchyard client token either way.
+	key := strings.TrimSpace(r.Header.Get("x-api-key"))
+	if key == "" {
+		key = strings.TrimSpace(strings.TrimPrefix(r.Header.Get("Authorization"), "Bearer "))
+	}
+	token, err := g.Store.GetTokenByValue(key)
+	if err != nil || token == nil {
+		anthropicError(w, 401, "Invalid or missing API key. Use a valid Switchyard client token (sk-portal-*) as the x-api-key.", "authentication_error")
+		return nil, false
+	}
+	if !token.Active {
+		anthropicError(w, 403, fmt.Sprintf("Token %q is currently disabled.", token.Name), "permission_error")
+		return nil, false
+	}
+	if token.QuotaLimit != nil && token.UsedTokens >= *token.QuotaLimit {
+		anthropicError(w, 429, fmt.Sprintf("Token %q has reached its token quota limit (%d / %d).", token.Name, token.UsedTokens, *token.QuotaLimit), "rate_limit_error")
+		return nil, false
+	}
+	return token, true
+}
+
 // HandleAnthropicMessages serves POST /v1/messages (and
 // /api/v1/messages). Auth and validation errors use the Anthropic
 // error shape; the request is translated to OpenAI shape and handed
@@ -105,23 +134,8 @@ func (g *Gateway) HandleAnthropicMessages(w http.ResponseWriter, r *http.Request
 		anthropicError(w, 400, "invalid JSON body", "invalid_request_error")
 		return
 	}
-	// Auth: x-api-key first (Claude Code), Bearer as fallback. The
-	// value is a Switchyard client token either way.
-	key := strings.TrimSpace(r.Header.Get("x-api-key"))
-	if key == "" {
-		key = strings.TrimSpace(strings.TrimPrefix(r.Header.Get("Authorization"), "Bearer "))
-	}
-	token, err := g.Store.GetTokenByValue(key)
-	if err != nil || token == nil {
-		anthropicError(w, 401, "Invalid or missing API key. Use a valid Switchyard client token (sk-portal-*) as the x-api-key.", "authentication_error")
-		return
-	}
-	if !token.Active {
-		anthropicError(w, 403, fmt.Sprintf("Token %q is currently disabled.", token.Name), "permission_error")
-		return
-	}
-	if token.QuotaLimit != nil && token.UsedTokens >= *token.QuotaLimit {
-		anthropicError(w, 429, fmt.Sprintf("Token %q has reached its token quota limit (%d / %d).", token.Name, token.UsedTokens, *token.QuotaLimit), "rate_limit_error")
+	token, ok := g.authenticateAnthropic(w, r)
+	if !ok {
 		return
 	}
 	raw, openAIBody, displayModel, err := translateAnthropicRequest(&req)
@@ -130,6 +144,42 @@ func (g *Gateway) HandleAnthropicMessages(w http.ResponseWriter, r *http.Request
 		return
 	}
 	g.serveChat(w, r, raw, openAIBody, token, displayModel, "anthropic")
+}
+
+// HandleAnthropicCountTokens serves POST /v1/messages/count_tokens
+// (and /api/v1/messages/count_tokens): {"input_tokens": <estimate>}.
+// Claude Desktop uses it for context-budget warnings. The count is
+// the gateway's prompt estimate (same calibration as the chat path),
+// not an upstream tokenizer count, and it never calls an upstream.
+func (g *Gateway) HandleAnthropicCountTokens(w http.ResponseWriter, r *http.Request) {
+	bodyBytes, err := io.ReadAll(io.LimitReader(r.Body, 10*1024*1024))
+	if err != nil {
+		anthropicError(w, 400, "failed to read body", "invalid_request_error")
+		return
+	}
+	var req anthropicRequest
+	if err := json.Unmarshal(bodyBytes, &req); err != nil {
+		anthropicError(w, 400, "invalid JSON body", "invalid_request_error")
+		return
+	}
+	if _, ok := g.authenticateAnthropic(w, r); !ok {
+		return
+	}
+	raw, _, _, err := translateAnthropicRequest(&req)
+	if err != nil {
+		anthropicError(w, 400, err.Error(), "invalid_request_error")
+		return
+	}
+	msgs := parseMessages(raw["messages"])
+	toolsLen := 0
+	if t, ok := raw["tools"]; ok {
+		if b, err := json.Marshal(t); err == nil {
+			toolsLen = len(b)
+		}
+	}
+	writeJSON(w, 200, map[string]interface{}{
+		"input_tokens": scheduler.EstimateTokens(msgs, toolsLen),
+	})
 }
 
 // anthropicError writes {"type":"error","error":{"type":...,"message":...}}.
