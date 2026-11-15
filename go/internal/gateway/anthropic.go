@@ -477,9 +477,24 @@ func translateAnthropicRequest(req *anthropicRequest) (map[string]interface{}, [
 	if len(msgs) == 0 {
 		return nil, nil, "", fmt.Errorf("messages must contain at least one usable message")
 	}
+	// minAnthropicMaxTokens floors max_tokens on the Anthropic path.
+	// Claude Desktop's model-switch check (and any other tiny probe)
+	// asks for as few as 10 output tokens; the gateway's pools are
+	// dominated by reasoning models (Kilo Ultra, Lightning-30b,
+	// GLM-5.2) that spend the whole budget on reasoning and return
+	// empty content, so the failover churns through every candidate
+	// and the request 502s once the few non-reasoning routes are in
+	// cooldown (reproduced 2026-11-15: haiku max_tokens=10 -> 502,
+	// opus/sonnet max_tokens=10 -> 200 only after 6-16s of failover
+	// ending on DeepSeek with 1 completion token). 1024 is enough
+	// for any of them to emit a short answer and only affects
+	// requests that asked for less; normal chat asks for 4096+.
+	const minAnthropicMaxTokens = 1024
 	maxTokens := req.MaxTokens
 	if maxTokens <= 0 {
 		maxTokens = 4096
+	} else if maxTokens < minAnthropicMaxTokens {
+		maxTokens = minAnthropicMaxTokens
 	}
 	raw := map[string]interface{}{
 		"model":      anthropicModelToAlias(req.Model),

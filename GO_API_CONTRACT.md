@@ -394,6 +394,14 @@ blocks are closed before the other kind opens), then
 the stream carried a usage chunk, else estimate/0) and
 `message_stop`.
 
+`max_tokens` is floored to 1024 on this path (absent -> 4096).
+Claude Desktop's model-switch check asks for as few as 10 output
+tokens; the pools are dominated by reasoning models that spend
+the whole budget on reasoning and return empty content, so a
+tiny budget churns the failover and 502s once the few
+non-reasoning routes are in cooldown. The floor only affects
+requests that asked for less; normal chat asks for 4096+.
+
 Claude Desktop (third-party inference, Developer -> Configure
 third-party inference -> Gateway) uses the same endpoint with
 base URL `https://railways.astana.qzz.io` (no `/v1` suffix; it
