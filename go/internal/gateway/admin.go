@@ -49,6 +49,7 @@ func (g *Gateway) RegisterAdmin(mux *http.ServeMux, guard AdminGuardConfig) {
 		}
 	}
 	mux.HandleFunc("/api/gateway/overview", admin(g.handleOverview))
+	mux.HandleFunc("/api/gateway/cost/summary", admin(g.handleCostSummary))
 	mux.HandleFunc("/api/gateway/logs", admin(g.handleLogs))
 	mux.HandleFunc("/api/gateway/config", admin(g.handleConfig))
 	mux.HandleFunc("/api/gateway/keys", admin(g.handleKeys))

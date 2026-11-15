@@ -318,7 +318,7 @@ func (s *SQLiteStore) UpdateCircuit(routeID, state, opens string, timeouts, five
 }
 
 func (s *SQLiteStore) AddAudit(row AuditRow) error {
-	_, err := s.db.Exec(`INSERT INTO audit_logs (request_id, timestamp, session_key, client_token_id, client_token_name, detected_task_type, is_private, selected_provider_key_id, selected_route_id, selected_model_id, failover_chain_json, estimated_tokens, billed_tokens, usage_source, latency_ms, status_code, validator_result, preview_prompt, requested_model) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`, row.RequestID, row.Timestamp, row.SessionKey, row.ClientTokenID, row.ClientTokenName, row.DetectedTaskType, boolToInt(row.IsPrivate), row.SelectedProviderKeyID, row.SelectedRouteID, row.SelectedModelID, row.FailoverChainJSON, row.EstimatedTokens, row.BilledTokens, row.UsageSource, row.LatencyMs, row.StatusCode, row.ValidatorResult, row.PreviewPrompt, row.RequestedModel)
+	_, err := s.db.Exec(`INSERT INTO audit_logs (request_id, timestamp, session_key, client_token_id, client_token_name, detected_task_type, is_private, selected_provider_key_id, selected_route_id, selected_model_id, failover_chain_json, estimated_tokens, billed_tokens, cost_usd, usage_source, latency_ms, status_code, validator_result, preview_prompt, requested_model) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`, row.RequestID, row.Timestamp, row.SessionKey, row.ClientTokenID, row.ClientTokenName, row.DetectedTaskType, boolToInt(row.IsPrivate), row.SelectedProviderKeyID, row.SelectedRouteID, row.SelectedModelID, row.FailoverChainJSON, row.EstimatedTokens, row.BilledTokens, row.CostUSD, row.UsageSource, row.LatencyMs, row.StatusCode, row.ValidatorResult, row.PreviewPrompt, row.RequestedModel)
 	if err != nil {
 		return err
 	}

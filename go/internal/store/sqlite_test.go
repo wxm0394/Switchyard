@@ -51,3 +51,32 @@ func TestSQLiteAuditSameTimestampOrder(t *testing.T) {
 		t.Fatalf("same-timestamp audit order = %v, want [req-new req-old]", logs)
 	}
 }
+
+// Cost tracking: AddAudit must persist a non-nil CostUSD, and a nil
+// CostUSD must land as NULL (unknown price), never 0.
+func TestSQLiteAuditCostUSD(t *testing.T) {
+	st, err := OpenSQLite(filepath.Join(t.TempDir(), "test.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	cost := 0.42
+	if err := st.AddAudit(AuditRow{RequestID: "req-cost", Timestamp: "2026-11-15T12:00:00Z", SessionKey: "s", ClientTokenID: "t", ClientTokenName: "t", DetectedTaskType: "fast", SelectedProviderKeyID: "k", SelectedRouteID: "r", SelectedModelID: "m", StatusCode: 200, ValidatorResult: "pass", CostUSD: &cost}); err != nil {
+		t.Fatal(err)
+	}
+	if err := st.AddAudit(AuditRow{RequestID: "req-nocost", Timestamp: "2026-11-15T12:00:01Z", SessionKey: "s", ClientTokenID: "t", ClientTokenName: "t", DetectedTaskType: "fast", SelectedProviderKeyID: "k", SelectedRouteID: "r", SelectedModelID: "m", StatusCode: 200, ValidatorResult: "pass"}); err != nil {
+		t.Fatal(err)
+	}
+	var got *float64
+	if err := st.db.QueryRow(`SELECT cost_usd FROM audit_logs WHERE request_id='req-cost'`).Scan(&got); err != nil {
+		t.Fatal(err)
+	}
+	if got == nil || *got != 0.42 {
+		t.Fatalf("cost_usd for req-cost = %v, want 0.42", got)
+	}
+	if err := st.db.QueryRow(`SELECT cost_usd FROM audit_logs WHERE request_id='req-nocost'`).Scan(&got); err != nil {
+		t.Fatal(err)
+	}
+	if got != nil {
+		t.Fatalf("cost_usd for req-nocost = %v, want NULL", *got)
+	}
+}

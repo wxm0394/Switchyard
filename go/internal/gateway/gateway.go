@@ -850,6 +850,16 @@ func (g *Gateway) HandleChat(w http.ResponseWriter, r *http.Request) {
 		_ = g.Store.IncrementTokenUsage(token.ID, billed)
 		chain = append(chain, fmt.Sprintf("%s (200 校验通过)", cand.Route.ModelID))
 		chainJSON, _ := json.Marshal(chain)
+		// Cost tracking (market reference, never actual spend): price this
+		// request from the upstream usage split. Unknown price or missing
+		// usage split => costUSD stays nil (NULL in the audit row), never 0.
+		// Pricing must never fail the request.
+		var costUSD *float64
+		if p, c, ok := parseUsageSplit(respBody, stream); ok {
+			if v, found := CostFor(cand.Route.ModelID, int64(p), int64(c)); found {
+				costUSD = &v
+			}
+		}
 		_ = g.Store.AddAudit(store.AuditRow{
 			// Millisecond precision, matching Node's toISOString shape.
 			// Second precision made same-second bursts indistinguishable
@@ -858,7 +868,7 @@ func (g *Gateway) HandleChat(w http.ResponseWriter, r *http.Request) {
 			SessionKey: cls.SessionKey, ClientTokenID: token.ID, ClientTokenName: token.Name,
 			DetectedTaskType: cls.TaskType, IsPrivate: cls.IsPrivate,
 			SelectedProviderKeyID: cand.Key.ID, SelectedRouteID: cand.Route.ID, SelectedModelID: cand.Route.ModelID,
-			FailoverChainJSON: string(chainJSON), EstimatedTokens: cls.EstimatedTokens, BilledTokens: billed,
+			FailoverChainJSON: string(chainJSON), EstimatedTokens: cls.EstimatedTokens, BilledTokens: billed, CostUSD: costUSD,
 			UsageSource: usageSource, LatencyMs: latency, StatusCode: 200, ValidatorResult: validatorResult,
 			PreviewPrompt: previewPrompt(msgs), RequestedModel: rawModel,
 		})

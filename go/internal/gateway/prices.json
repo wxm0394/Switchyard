@@ -1,0 +1,154 @@
+{
+  "ZhipuAI/GLM-5.2": {
+    "litellm_key": "zai/glm-5.2",
+    "litellm_provider": "zai",
+    "input_cost_per_token": 0.0000014,
+    "output_cost_per_token": 0.0000044,
+    "estimated": false,
+    "free_route": false
+  },
+  "nvidia/nemotron-3-ultra-550b-a55b": {
+    "litellm_key": "baseten/nvidia/NVIDIA-Nemotron-3-Ultra-550B-A55B",
+    "litellm_provider": "baseten",
+    "input_cost_per_token": 0.0000006,
+    "output_cost_per_token": 0.0000024,
+    "estimated": false,
+    "free_route": false
+  },
+  "nvidia/nemotron-3.5-lightning-30b-a3b": {
+    "litellm_key": "wandb/nvidia/NVIDIA-Nemotron-3.5-Lightning-30B-A3B",
+    "litellm_provider": "wandb",
+    "input_cost_per_token": 0.00000007,
+    "output_cost_per_token": 0.0000002,
+    "estimated": false,
+    "free_route": false
+  },
+  "nvidia/nemotron-3.5-lightning:free": {
+    "litellm_key": "wandb/nvidia/NVIDIA-Nemotron-3.5-Lightning-30B-A3B",
+    "litellm_provider": "wandb",
+    "input_cost_per_token": 0.00000007,
+    "output_cost_per_token": 0.0000002,
+    "estimated": false,
+    "free_route": true
+  },
+  "qwen3.6-27b": {
+    "litellm_key": "deepinfra/Qwen/Qwen3.6-27B",
+    "litellm_provider": "deepinfra",
+    "input_cost_per_token": 0.00000032,
+    "output_cost_per_token": 0.0000032,
+    "estimated": true,
+    "free_route": true
+  },
+  "openai/gpt-oss-20b": {
+    "litellm_key": "cloudflare/@cf/openai/gpt-oss-20b",
+    "litellm_provider": "cloudflare",
+    "input_cost_per_token": 0.0000002,
+    "output_cost_per_token": 0.0000003,
+    "estimated": false,
+    "free_route": false
+  },
+  "command-a-03-2025": {
+    "litellm_key": "command-a-03-2025",
+    "litellm_provider": "cohere_chat",
+    "input_cost_per_token": 0.0000025,
+    "output_cost_per_token": 0.00001,
+    "estimated": false,
+    "free_route": false
+  },
+  "codestral-latest": {
+    "litellm_key": "mistral/codestral-latest",
+    "litellm_provider": "mistral",
+    "input_cost_per_token": 0.0000003,
+    "output_cost_per_token": 0.0000009,
+    "estimated": false,
+    "free_route": false
+  },
+  "gpt-oss:20b": {
+    "litellm_key": "cloudflare/@cf/openai/gpt-oss-20b",
+    "litellm_provider": "cloudflare",
+    "input_cost_per_token": 0.0000002,
+    "output_cost_per_token": 0.0000003,
+    "estimated": true,
+    "free_route": true
+  },
+  "zai-glm-4.7-flash": {
+    "litellm_key": "cloudflare/@cf/zai-org/glm-4.7-flash",
+    "litellm_provider": "cloudflare",
+    "input_cost_per_token": 0.0000000605,
+    "output_cost_per_token": 0.0000004,
+    "estimated": false,
+    "free_route": false
+  },
+  "gpt-oss-120b": {
+    "litellm_key": "azure_ai/gpt-oss-120b",
+    "litellm_provider": "azure_ai",
+    "input_cost_per_token": 0.00000015,
+    "output_cost_per_token": 0.0000006,
+    "estimated": false,
+    "free_route": false
+  },
+  "DeepSeek-V4-Flash": {
+    "litellm_key": "deepseek/deepseek-v4-flash",
+    "litellm_provider": "deepseek",
+    "input_cost_per_token": 0.0000003,
+    "output_cost_per_token": 0.0000012,
+    "estimated": false,
+    "free_route": false
+  },
+  "mistralai/devstral-medium": {
+    "litellm_key": "mistral/devstral-medium-latest",
+    "litellm_provider": "mistral",
+    "input_cost_per_token": 0.0000004,
+    "output_cost_per_token": 0.000002,
+    "estimated": false,
+    "free_route": false
+  },
+  "z-ai/glm-5.3-flash-free": {
+    "litellm_key": "friendliai/zai-org/GLM-5.3-Flash",
+    "litellm_provider": "friendliai",
+    "input_cost_per_token": 0.00000015,
+    "output_cost_per_token": 0.0000005,
+    "estimated": false,
+    "free_route": true
+  },
+  "deepseek/deepseek-v4-flash-free": {
+    "litellm_key": "deepseek/deepseek-v4-flash",
+    "litellm_provider": "deepseek",
+    "input_cost_per_token": 0.0000003,
+    "output_cost_per_token": 0.0000012,
+    "estimated": false,
+    "free_route": true
+  },
+  "google/gemini-2.5-flash": {
+    "litellm_key": "gemini-2.5-flash",
+    "litellm_provider": "vertex_ai-language-models",
+    "input_cost_per_token": 0.0000003,
+    "output_cost_per_token": 0.0000025,
+    "estimated": false,
+    "free_route": false
+  },
+  "moonshotai/kimi-k2.7-code": {
+    "litellm_key": "moonshot/kimi-k2.7-code",
+    "litellm_provider": "moonshot",
+    "input_cost_per_token": 0.00000095,
+    "output_cost_per_token": 0.000004,
+    "estimated": false,
+    "free_route": false
+  },
+  "google/gemini-3-flash-preview": {
+    "litellm_key": "gemini/gemini-3-flash-preview",
+    "litellm_provider": "gemini",
+    "input_cost_per_token": 0.0000005,
+    "output_cost_per_token": 0.000003,
+    "estimated": false,
+    "free_route": false
+  },
+  "glm-4.6v": {
+    "litellm_key": "novita/zai-org/glm-4.6v",
+    "litellm_provider": "novita",
+    "input_cost_per_token": 0.0000003,
+    "output_cost_per_token": 0.0000009,
+    "estimated": false,
+    "free_route": false
+  }
+}
