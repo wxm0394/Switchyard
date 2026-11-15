@@ -132,7 +132,13 @@ content is a string or an array of `{type: "text", text}` /
 `temperature` and other pass-through fields (forwarded to upstream
 as-is, except the gateway rewrites `model` to the route's
 `upstream_model` and, for Gemini-type routes, converts the body;
-a Claude model name (`claude-sonnet-4-5`, `claude-opus-4-5`,
+for `stream: true` the gateway also adds
+`stream_options.include_usage=true` when the client did not set it,
+so the upstream emits a usage chunk and the request can be priced
+from the real prompt/completion split — without it, streaming
+requests carry no usage split and their audit cost stays NULL, even
+though the model has a price; an explicit client
+`include_usage=false` is respected). A Claude model name (`claude-sonnet-4-5`, `claude-opus-4-5`,
 `claude-haiku-4-5`, dated variants) resolves to its pool first
 (same mapping as §2.4), so every ID `/v1/models` lists routes
 somewhere. The audit row's `RequestedModel` keeps the original
