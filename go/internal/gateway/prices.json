@@ -39,6 +39,14 @@
     "estimated": true,
     "free_route": true
   },
+  "hyperbolic/Qwen/Qwen2.5-Coder-32B-Instruct": {
+    "litellm_key": "hyperbolic/Qwen/Qwen2.5-Coder-32B-Instruct",
+    "litellm_provider": "hyperbolic",
+    "input_cost_per_token": 0.00000012,
+    "output_cost_per_token": 0.0000003,
+    "estimated": false,
+    "free_route": false
+  },
   "openai/gpt-oss-20b": {
     "litellm_key": "cloudflare/@cf/openai/gpt-oss-20b",
     "litellm_provider": "cloudflare",
@@ -63,6 +71,14 @@
     "estimated": false,
     "free_route": false
   },
+  "mistral/codestral-2508": {
+    "litellm_key": "mistral/codestral-2508",
+    "litellm_provider": "mistral",
+    "input_cost_per_token": 0.0000003,
+    "output_cost_per_token": 0.0000009,
+    "estimated": false,
+    "free_route": false
+  },
   "gpt-oss:20b": {
     "litellm_key": "cloudflare/@cf/openai/gpt-oss-20b",
     "litellm_provider": "cloudflare",
@@ -76,6 +92,14 @@
     "litellm_provider": "cloudflare",
     "input_cost_per_token": 0.0000000605,
     "output_cost_per_token": 0.0000004,
+    "estimated": false,
+    "free_route": false
+  },
+  "zai/glm-4.7": {
+    "litellm_key": "zai/glm-4.7",
+    "litellm_provider": "zai",
+    "input_cost_per_token": 0.0000006,
+    "output_cost_per_token": 0.0000022,
     "estimated": false,
     "free_route": false
   },
@@ -132,6 +156,14 @@
     "litellm_provider": "moonshot",
     "input_cost_per_token": 0.00000095,
     "output_cost_per_token": 0.000004,
+    "estimated": false,
+    "free_route": false
+  },
+  "moonshot/kimi-k3.1-pro": {
+    "litellm_key": "moonshot/kimi-k3.1-pro",
+    "litellm_provider": "moonshot",
+    "input_cost_per_token": 0.000002,
+    "output_cost_per_token": 0.00001,
     "estimated": false,
     "free_route": false
   },

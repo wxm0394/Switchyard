@@ -4,6 +4,7 @@ import (
 	_ "embed"
 	"encoding/json"
 	"math"
+	"strings"
 	"sync"
 )
 
@@ -36,14 +37,73 @@ func loadPriceTable() map[string]ModelPrice {
 	return priceTable
 }
 
+// priceAlias maps a gateway model_id whose LiteLLM key differs from the
+// gateway id to the canonical key in prices.json. estimated=true means the
+// mapping is an approximation (nearest hosted equivalent, not the same
+// model); the panel shows it as 估算. Verified against the live LiteLLM
+// price file 2026-11-15; models with no LiteLLM listing at all
+// (poolside/laguna-xs-2.1, cohere/north-mini-code, Kaggle-internal
+// Qwen3.5/Qwen3.8, TEMP probe ids) are deliberately left unmapped and
+// stay price-unknown (NULL) rather than priced on a guess.
+type priceAlias struct {
+	canonical string
+	estimated bool
+}
+
+var priceAliases = map[string]priceAlias{
+	// xKiro serves Codestral under the mistralai/ prefix; LiteLLM lists it as mistral/.
+	"mistralai/codestral-2508": {canonical: "mistral/codestral-2508"},
+	// The old Zhipu-direct route used the bare id; LiteLLM lists GLM-4.7 under zai/.
+	"glm-4.7": {canonical: "zai/glm-4.7"},
+	// Gateway id keeps the vendor prefix + original case; LiteLLM uses moonshot/ lowercase.
+	"moonshotai/Kimi-K3.1-Pro": {canonical: "moonshot/kimi-k3.1-pro"},
+	// Self-hosted Qwen2.5-Coder-14B (local GGUF) has no LiteLLM listing at
+	// any size: 14B exists nowhere in the price file. Nearest hosted Qwen
+	// coder price (Hyperbolic 32B) is used as an estimate, marked as such.
+	"qwen2.5-coder-14b": {canonical: "hyperbolic/Qwen/Qwen2.5-Coder-32B-Instruct", estimated: true},
+}
+
 // LookupModelPrice returns the ModelPrice metadata for a given modelID if present.
+//
+// Resolution order: exact key, alias map, then the same two steps with a
+// trailing ":free" suffix stripped (free-tier variants are priced at the
+// base model's rate, e.g. nvidia/nemotron-3-ultra-550b-a55b:free uses the
+// nvidia/nemotron-3-ultra-550b-a55b price). Anything else is unknown.
 func LookupModelPrice(modelID string) (ModelPrice, bool) {
 	if modelID == "" {
 		return ModelPrice{}, false
 	}
 	tbl := loadPriceTable()
-	p, ok := tbl[modelID]
-	return p, ok
+	if p, ok := tbl[modelID]; ok {
+		return p, true
+	}
+	if p, ok := lookupAlias(tbl, modelID); ok {
+		return p, true
+	}
+	if base, ok := strings.CutSuffix(modelID, ":free"); ok {
+		if p, ok := tbl[base]; ok {
+			return p, true
+		}
+		if p, ok := lookupAlias(tbl, base); ok {
+			return p, true
+		}
+	}
+	return ModelPrice{}, false
+}
+
+func lookupAlias(tbl map[string]ModelPrice, modelID string) (ModelPrice, bool) {
+	a, ok := priceAliases[modelID]
+	if !ok {
+		return ModelPrice{}, false
+	}
+	p, ok := tbl[a.canonical]
+	if !ok {
+		return ModelPrice{}, false
+	}
+	if a.estimated {
+		p.Estimated = true
+	}
+	return p, true
 }
 
 // CostFor computes the market-reference USD price for a single request:
