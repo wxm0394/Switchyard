@@ -96,6 +96,17 @@ pool status is `callable`. `capabilities.max_context` is the fixed
 Pool status values: `no_routes | partial_invalid | untested |
 callable` (see §5).
 
+Each pool is additionally listed under its Claude model name
+(`claude-sonnet-4-5` -> `coder`, `claude-opus-4-5` ->
+`reasoning`, `claude-haiku-4-5` -> `fast`), with the same fields
+plus Anthropic's `type: "model"` and `display_name` ("Claude
+Sonnet 4.5" / "Claude Opus 4.5" / "Claude Haiku 4.5"). This is
+for Claude Desktop's third-party inference auto-discovery, which
+only shows model IDs that name a Claude model and drops the bare
+alias IDs, leaving its model picker empty. Sending a Claude name
+to either endpoint resolves it to the same pool (see §2.4 for
+`/v1/messages`, §2.2 for `/v1/chat/completions`).
+
 ### 2.2 POST /v1/chat/completions and POST /api/v1/chat/completions
 
 Auth, in order (Node `handleChatCompletions`):
@@ -121,6 +132,11 @@ content is a string or an array of `{type: "text", text}` /
 `temperature` and other pass-through fields (forwarded to upstream
 as-is, except the gateway rewrites `model` to the route's
 `upstream_model` and, for Gemini-type routes, converts the body;
+a Claude model name (`claude-sonnet-4-5`, `claude-opus-4-5`,
+`claude-haiku-4-5`, dated variants) resolves to its pool first
+(same mapping as §2.4), so every ID `/v1/models` lists routes
+somewhere. The audit row's `RequestedModel` keeps the original
+model string the client sent.
 the Go Phase 3 port covers OpenAI-compatible upstreams and keeps
 the Gemini converter as a later, explicitly flagged gap if not
 ported — see §7).
@@ -377,6 +393,23 @@ blocks are closed before the other kind opens), then
 `message_delta` (final `stop_reason` + usage: real split when
 the stream carried a usage chunk, else estimate/0) and
 `message_stop`.
+
+Claude Desktop (third-party inference, Developer -> Configure
+third-party inference -> Gateway) uses the same endpoint with
+base URL `https://railways.astana.qzz.io` (no `/v1` suffix; it
+appends `/v1/messages` itself) and either auth scheme (`bearer`
+sends `Authorization: Bearer <key>`, `x-api-key` sends the
+`x-api-key` header; both accept a Switchyard client token). Its
+model picker is populated from `GET /v1/models` auto-discovery,
+which is why the Claude-named entries exist (§2.1).
+
+### 2.5 POST /v1/messages/count_tokens and POST /api/v1/messages/count_tokens
+
+Returns `{"input_tokens": <estimate>}` for an Anthropic request
+body (same shape as §2.4; same `x-api-key` / Bearer auth). The
+count is the gateway's prompt estimate (same calibration as the
+chat path), not an upstream tokenizer count, and it never calls
+an upstream. Claude Desktop uses it for context-budget warnings.
 
 ## 3. Admin endpoints (all under /api/gateway, all admin-guarded)
 

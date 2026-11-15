@@ -465,6 +465,40 @@ func (g *Gateway) evaluatePool(targets []string, routes []scheduler.Route, keys 
 
 // ---- /v1/models ----
 
+// claudeNameForAlias advertises each pool under its Claude model
+// name for clients that only discover "recognizably Claude" IDs.
+// Claude Desktop's third-party inference auto-discovery drops every
+// ID that does not contain "claude" or "anthropic", so the bare
+// alias IDs (coder/reasoning/fast) leave its model picker empty and
+// the setup reports "required fields are missing or malformed".
+// These entries are aliases, not routes: sending one to
+// /v1/messages maps it back to its pool (anthropicModelToAlias),
+// and /v1/chat/completions resolves it to the same pool.
+var claudeNameForAlias = map[string]struct{ id, display string }{
+	"coder":     {"claude-sonnet-4-5", "Claude Sonnet 4.5"},
+	"reasoning": {"claude-opus-4-5", "Claude Opus 4.5"},
+	"fast":      {"claude-haiku-4-5", "Claude Haiku 4.5"},
+}
+
+// modelListEntry builds one /v1/models entry. displayName is the
+// Anthropic display name, set only for the Claude-named entries
+// (bare aliases carry no display_name, as before).
+func modelListEntry(id, displayName string, targets []string, description string, ev poolEval) map[string]interface{} {
+	e := map[string]interface{}{
+		"id": id, "object": "model", "created": 1735689600, "owned_by": "portal-alias",
+		"permission": []interface{}{}, "root": id, "parent": nil,
+		"portal_type": "task_pool_alias", "upstream_model": strings.Join(targets, " -> "),
+		"verified": ev.PoolStatus == "callable",
+		"capabilities": map[string]interface{}{"vision": true, "tools": true, "json_mode": true, "streaming": true, "max_context": 128000, "task_role": "auto", "description": description, "target_routes": targets},
+		"health_status": ev.PoolStatus,
+	}
+	if displayName != "" {
+		e["type"] = "model"
+		e["display_name"] = displayName
+	}
+	return e
+}
+
 func (g *Gateway) HandleModels(w http.ResponseWriter, r *http.Request) {
 	routes, keys, aliases, _, err := g.loadFleet()
 	if err != nil {
@@ -483,14 +517,10 @@ func (g *Gateway) HandleModels(w http.ResponseWriter, r *http.Request) {
 		if ev.PoolStatus == "no_routes" {
 			continue
 		}
-		data = append(data, map[string]interface{}{
-			"id": a.Alias, "object": "model", "created": 1735689600, "owned_by": "portal-alias",
-			"permission": []interface{}{}, "root": a.Alias, "parent": nil,
-			"portal_type": "task_pool_alias", "upstream_model": strings.Join(a.TargetModels, " -> "),
-			"verified": ev.PoolStatus == "callable",
-			"capabilities": map[string]interface{}{"vision": true, "tools": true, "json_mode": true, "streaming": true, "max_context": 128000, "task_role": "auto", "description": a.Description, "target_routes": a.TargetModels},
-			"health_status": ev.PoolStatus,
-		})
+		data = append(data, modelListEntry(a.Alias, "", a.TargetModels, a.Description, ev))
+		if cn, ok := claudeNameForAlias[a.Alias]; ok {
+			data = append(data, modelListEntry(cn.id, cn.display, a.TargetModels, a.Description, ev))
+		}
 	}
 	writeJSON(w, 200, map[string]interface{}{"object": "list", "data": data})
 }
@@ -689,7 +719,15 @@ func (g *Gateway) serveChat(w http.ResponseWriter, r *http.Request, raw map[stri
 		}
 	}
 	if explicitPin == "" && len(aliasTargets) == 0 && requestedModel != "" {
-		if a, ok := aliasByName[requestedModel]; ok && len(a.TargetModels) > 0 {
+		// A Claude model name (as listed by /v1/models for Claude
+		// Desktop discovery) resolves to its pool, same as on the
+		// Anthropic endpoint; anything else keeps the old behaviour
+		// (alias lookup, then exact modelId pin).
+		lookupModel := requestedModel
+		if mapped := anthropicModelToAlias(requestedModel); mapped != requestedModel {
+			lookupModel = mapped
+		}
+		if a, ok := aliasByName[lookupModel]; ok && len(a.TargetModels) > 0 {
 			aliasTargets = a.TargetModels
 		} else {
 			for _, rt := range enabledRoutes {
