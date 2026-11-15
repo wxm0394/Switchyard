@@ -1234,6 +1234,30 @@ func sseStreamContent(body []byte) (bool, int) {
 	return hasContent, usageTokens
 }
 
+// ensureStreamUsage asks a streaming upstream to include a usage chunk
+// (stream_options.include_usage=true) so the gateway can price the
+// request from the real prompt/completion split. Without it most
+// upstreams emit no usage in SSE at all, or a total-only chunk, and the
+// audit row's cost stays NULL even though the model has a price — that
+// is why Roo's streaming coder requests were never priced while
+// non-streaming pins and the Anthropic path (which already sets this
+// in translateAnthropicRequest) were. Only additive: an explicit
+// include_usage=false from the client is respected, and a malformed
+// non-object stream_options is left alone.
+func ensureStreamUsage(reqBody map[string]interface{}) {
+	so, ok := reqBody["stream_options"].(map[string]interface{})
+	if !ok {
+		if _, present := reqBody["stream_options"]; present {
+			return
+		}
+		reqBody["stream_options"] = map[string]interface{}{"include_usage": true}
+		return
+	}
+	if _, present := so["include_usage"]; !present {
+		so["include_usage"] = true
+	}
+}
+
 // callUpstream forwards to the route's base URL + /chat/completions
 // with the route's upstream model substituted. It returns
 // (status, body, billedTokens, upstreamError). Streaming bodies are
@@ -1250,6 +1274,14 @@ func (g *Gateway) callUpstream(cand scheduler.Candidate, origBody []byte, raw ma
 	reqBody["model"] = cand.Route.UpstreamModel
 	// Remove gateway-only fields if present.
 	delete(reqBody, "metadata")
+	// Streaming: ask the upstream for a usage chunk, so cost tracking
+	// (and the billed-token count) use the real split instead of the
+	// prompt estimate. The Anthropic path already does this in
+	// translateAnthropicRequest; the OpenAI path did not, which is why
+	// Roo's streaming coder requests were never priced.
+	if stream {
+		ensureStreamUsage(reqBody)
+	}
 	fwd, _ := json.Marshal(reqBody)
 	base := strings.TrimRight(cand.Route.BaseURL, "/")
 	url := base + "/chat/completions"
