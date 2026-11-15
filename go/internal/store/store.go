@@ -73,7 +73,7 @@ CREATE TABLE IF NOT EXISTS audit_logs (
   selected_provider_key_id TEXT NOT NULL, selected_route_id TEXT NOT NULL,
   selected_model_id TEXT NOT NULL, failover_chain_json TEXT NOT NULL DEFAULT '[]',
   estimated_tokens INTEGER NOT NULL DEFAULT 0, billed_tokens INTEGER NOT NULL DEFAULT 0,
-  usage_source TEXT NOT NULL DEFAULT 'upstream', latency_ms INTEGER NOT NULL DEFAULT 0,
+  cost_usd REAL, usage_source TEXT NOT NULL DEFAULT 'upstream', latency_ms INTEGER NOT NULL DEFAULT 0,
   ttft_ms INTEGER, status_code INTEGER NOT NULL, validator_result TEXT NOT NULL DEFAULT 'pass',
   preview_prompt TEXT NOT NULL DEFAULT '', requested_model TEXT);
 CREATE TABLE IF NOT EXISTS model_aliases (
@@ -90,6 +90,7 @@ ALTER TABLE model_routes ADD COLUMN circuit_closed_at TEXT;
 ALTER TABLE model_routes ADD COLUMN private_only INTEGER NOT NULL DEFAULT 0;
 ALTER TABLE scheduler_config ADD COLUMN privacy_mode TEXT NOT NULL DEFAULT 'high';
 ALTER TABLE audit_logs ADD COLUMN requested_model TEXT;
+ALTER TABLE audit_logs ADD COLUMN cost_usd REAL;
 `
 
 type Alias struct {
@@ -136,12 +137,16 @@ type AuditRow struct {
 	FailoverChainJSON     string
 	EstimatedTokens       int
 	BilledTokens          int
-	UsageSource           string
-	LatencyMs             int
-	StatusCode            int
-	ValidatorResult       string
-	PreviewPrompt         string
-	RequestedModel        string
+	// CostUSD is the market-reference USD price of this request (LiteLLM
+	// price table), or nil when the model has no known price or no usage
+	// split was available. Nil means "unknown", never $0.
+	CostUSD         *float64
+	UsageSource     string
+	LatencyMs       int
+	StatusCode      int
+	ValidatorResult string
+	PreviewPrompt   string
+	RequestedModel  string
 }
 
 // Store is the gateway's data access interface. MemStore implements
