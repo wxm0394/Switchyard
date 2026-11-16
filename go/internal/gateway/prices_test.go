@@ -117,3 +117,54 @@ func TestLookupModelPriceGPT6Luna(t *testing.T) {
 		t.Fatalf("expected cost ~0.35, got %.6f", cost)
 	}
 }
+
+func TestLookupModelPriceNumes(t *testing.T) {
+	// Numes $0 models (2026-11-16): 5 priced exactly from the live LiteLLM
+	// file, 4 third-party fine-tunes priced at their base model's rate as
+	// an estimate. All 9 must resolve so Numes traffic shows in /cost/.
+	exact := map[string][2]float64{
+		"deepseek/deepseek-v4.1-flash": {0.0000003, 0.0000012},
+		"z-ai/glm-5.3":                 {0.0000014, 0.0000044},
+		"z-ai/glm-5.3-flash":           {0.00000015, 0.0000005},
+		"moonshotai/kimi-k3.1-pro":     {0.000002, 0.00001},
+		"nvidia/nemotron-3-ultra":      {0.0000006, 0.0000024},
+	}
+	for id, want := range exact {
+		p, ok := LookupModelPrice(id)
+		if !ok {
+			t.Fatalf("expected ok=true for %s", id)
+		}
+		if p.InputCostPerToken != want[0] || p.OutputCostPerToken != want[1] {
+			t.Fatalf("expected %s prices (%v/%v), got %v/%v", id, want[0], want[1], p.InputCostPerToken, p.OutputCostPerToken)
+		}
+		if p.Estimated {
+			t.Fatalf("expected Estimated=false for %s (exact price)", id)
+		}
+	}
+	estimated := map[string][2]float64{
+		"dealignai/deepseek-v4.1-flash-uncensored-fp8": {0.0000003, 0.0000012},
+		"dealignai/glm-5.3-flash-uncensored-fp8":       {0.00000015, 0.0000005},
+		"dealignai/glm-5.3-uncensored-fp8":             {0.0000014, 0.0000044},
+		"uniboshi/kimi-k3-abliterated-v1":              {0.000003, 0.000015},
+	}
+	for id, want := range estimated {
+		p, ok := LookupModelPrice(id)
+		if !ok {
+			t.Fatalf("expected ok=true for %s", id)
+		}
+		if p.InputCostPerToken != want[0] || p.OutputCostPerToken != want[1] {
+			t.Fatalf("expected %s prices (%v/%v), got %v/%v", id, want[0], want[1], p.InputCostPerToken, p.OutputCostPerToken)
+		}
+		if !p.Estimated {
+			t.Fatalf("expected Estimated=true for %s (base-model estimate)", id)
+		}
+	}
+	// Spot-check CostFor: glm-5.3-flash 1M in + 500K out = 0.15 + 0.25 = $0.40
+	cost, ok := CostFor("z-ai/glm-5.3-flash", 1_000_000, 500_000)
+	if !ok {
+		t.Fatalf("expected ok=true for z-ai/glm-5.3-flash cost")
+	}
+	if math.Abs(cost-0.40) > 0.001 {
+		t.Fatalf("expected cost ~0.40, got %.6f", cost)
+	}
+}

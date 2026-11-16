@@ -61,6 +61,18 @@ var priceAliases = map[string]priceAlias{
 	// any size: 14B exists nowhere in the price file. Nearest hosted Qwen
 	// coder price (Hyperbolic 32B) is used as an estimate, marked as such.
 	"qwen2.5-coder-14b": {canonical: "hyperbolic/Qwen/Qwen2.5-Coder-32B-Instruct", estimated: true},
+	// Numes serves Kimi K3.1 Pro under a lowercase moonshotai/ prefix;
+	// LiteLLM lists it under moonshot/.
+	"moonshotai/kimi-k3.1-pro": {canonical: "moonshot/kimi-k3.1-pro"},
+	// Numes id drops the 550b-a55b suffix; same model as the existing
+	// nvidia/nemotron-3-ultra-550b-a55b entry (Baseten price).
+	"nvidia/nemotron-3-ultra": {canonical: "nvidia/nemotron-3-ultra-550b-a55b"},
+	// Third-party uncensored/abliterated fine-tunes have no LiteLLM listing
+	// anywhere. Priced at their base model's rate as an estimate, marked so.
+	"dealignai/deepseek-v4.1-flash-uncensored-fp8": {canonical: "deepseek/deepseek-v4.1-flash", estimated: true},
+	"dealignai/glm-5.3-flash-uncensored-fp8":       {canonical: "z-ai/glm-5.3-flash", estimated: true},
+	"dealignai/glm-5.3-uncensored-fp8":             {canonical: "z-ai/glm-5.3", estimated: true},
+	"uniboshi/kimi-k3-abliterated-v1":              {canonical: "moonshot/kimi-k3", estimated: true},
 }
 
 // LookupModelPrice returns the ModelPrice metadata for a given modelID if present.
