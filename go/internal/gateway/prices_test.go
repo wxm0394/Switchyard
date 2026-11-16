@@ -92,3 +92,28 @@ func TestCostForFreeSuffixAndAlias(t *testing.T) {
 		t.Fatalf("expected cost ~0.27, got %.6f", cost)
 	}
 }
+
+func TestLookupModelPriceGPT6Luna(t *testing.T) {
+	// Coarena's only free model; LiteLLM lists the bare id exactly
+	// (gpt-6-luna: 1e-07 in / 5e-07 out), so this is an exact price,
+	// not an estimate. It must price so Luna traffic shows in /cost/.
+	p, ok := LookupModelPrice("gpt-6-luna")
+	if !ok {
+		t.Fatalf("expected ok=true for gpt-6-luna")
+	}
+	if p.InputCostPerToken != 0.0000001 || p.OutputCostPerToken != 0.0000005 {
+		t.Fatalf("expected Luna prices (1e-07/5e-07), got %v/%v",
+			p.InputCostPerToken, p.OutputCostPerToken)
+	}
+	if p.Estimated {
+		t.Fatalf("expected Estimated=false for an exact LiteLLM listing")
+	}
+	// 1M in + 500K out: 0.10 + 0.25 = $0.35
+	cost, ok := CostFor("gpt-6-luna", 1_000_000, 500_000)
+	if !ok {
+		t.Fatalf("expected ok=true for gpt-6-luna cost")
+	}
+	if math.Abs(cost-0.35) > 0.001 {
+		t.Fatalf("expected cost ~0.35, got %.6f", cost)
+	}
+}
