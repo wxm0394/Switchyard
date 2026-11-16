@@ -190,5 +190,37 @@
     "output_cost_per_token": 0.0000005,
     "estimated": false,
     "free_route": true
+  },
+  "deepseek/deepseek-v4.1-flash": {
+    "litellm_key": "deepseek/deepseek-v4-flash",
+    "litellm_provider": "deepseek",
+    "input_cost_per_token": 0.0000003,
+    "output_cost_per_token": 0.0000012,
+    "estimated": false,
+    "free_route": true
+  },
+  "z-ai/glm-5.3": {
+    "litellm_key": "zai/glm-5.3",
+    "litellm_provider": "zai",
+    "input_cost_per_token": 0.0000014,
+    "output_cost_per_token": 0.0000044,
+    "estimated": false,
+    "free_route": true
+  },
+  "z-ai/glm-5.3-flash": {
+    "litellm_key": "zai/glm-5.3-flash",
+    "litellm_provider": "zai",
+    "input_cost_per_token": 0.00000015,
+    "output_cost_per_token": 0.0000005,
+    "estimated": false,
+    "free_route": true
+  },
+  "moonshot/kimi-k3": {
+    "litellm_key": "moonshot/kimi-k3",
+    "litellm_provider": "moonshot",
+    "input_cost_per_token": 0.000003,
+    "output_cost_per_token": 0.000015,
+    "estimated": false,
+    "free_route": false
   }
 }
