@@ -3,7 +3,7 @@ module github.com/wxm0394/Switchyard
 go 1.26.0
 
 require (
-	github.com/wxm0394/Multi-Armed-Bandit v0.2.0
+	github.com/wxm0394/Multi-Armed-Bandit v0.2.1
 	modernc.org/sqlite v1.61.0
 )
 
