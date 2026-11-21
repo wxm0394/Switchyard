@@ -73,6 +73,12 @@ var priceAliases = map[string]priceAlias{
 	"dealignai/glm-5.3-flash-uncensored-fp8":       {canonical: "z-ai/glm-5.3-flash", estimated: true},
 	"dealignai/glm-5.3-uncensored-fp8":             {canonical: "z-ai/glm-5.3", estimated: true},
 	"uniboshi/kimi-k3-abliterated-v1":              {canonical: "moonshot/kimi-k3", estimated: true},
+	// 100milionseek serves DeepSeek V4.1 Flash under the bare id (no
+	// deepseek/ prefix, and a hyphenated -free suffix, so the :free
+	// strip in LookupModelPrice never fires); LiteLLM lists it as
+	// deepseek/deepseek-v4.1-flash. Without this alias the route's
+	// cost_usd stays NULL and /cost/ drops the whole model.
+	"deepseek-v4.1-flash-free": {canonical: "deepseek/deepseek-v4.1-flash"},
 }
 
 // LookupModelPrice returns the ModelPrice metadata for a given modelID if present.
