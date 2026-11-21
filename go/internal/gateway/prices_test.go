@@ -168,3 +168,30 @@ func TestLookupModelPriceNumes(t *testing.T) {
 		t.Fatalf("expected cost ~0.40, got %.6f", cost)
 	}
 }
+
+func TestLookupModelPrice100milionseek(t *testing.T) {
+	// 100milionseek serves DeepSeek V4.1 Flash under the bare id
+	// (no deepseek/ prefix, hyphenated -free suffix). LiteLLM lists
+	// it as deepseek/deepseek-v4.1-flash (3e-07 in / 1.2e-06 out),
+	// so this is an exact price, not an estimate. Without the alias
+	// the route's cost_usd stays NULL and /cost/ drops the model.
+	p, ok := LookupModelPrice("deepseek-v4.1-flash-free")
+	if !ok {
+		t.Fatalf("expected ok=true for deepseek-v4.1-flash-free")
+	}
+	if p.InputCostPerToken != 0.0000003 || p.OutputCostPerToken != 0.0000012 {
+		t.Fatalf("expected DeepSeek V4.1 Flash prices (3e-07/1.2e-06), got %v/%v",
+			p.InputCostPerToken, p.OutputCostPerToken)
+	}
+	if p.Estimated {
+		t.Fatalf("expected Estimated=false for an exact canonical price")
+	}
+	// 1M in + 500K out: 0.30 + 0.60 = $0.90
+	cost, ok := CostFor("deepseek-v4.1-flash-free", 1_000_000, 500_000)
+	if !ok {
+		t.Fatalf("expected ok=true for deepseek-v4.1-flash-free cost")
+	}
+	if math.Abs(cost-0.90) > 0.001 {
+		t.Fatalf("expected cost ~0.90, got %.6f", cost)
+	}
+}
