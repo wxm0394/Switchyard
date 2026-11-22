@@ -14,6 +14,11 @@ func setupAutoEnroll(t *testing.T) *Gateway {
 	_ = st.UpsertAlias(store.Alias{ID: "a1", Alias: "coder", TargetModels: []string{"model-a"}})
 	_ = st.UpsertAlias(store.Alias{ID: "a2", Alias: "fast", TargetModels: []string{"model-a"}})
 	_ = st.UpsertAlias(store.Alias{ID: "a3", Alias: "vision", TargetModels: []string{"model-a"}})
+	// Dedicated single-model lines: auto-enroll must never append to
+	// these, on success or at startup (2026-11-22: a restart turned
+	// pi/lnr/kaggle-gpu/ceo into pools and cross-routed their traffic).
+	_ = st.UpsertAlias(store.Alias{ID: "a4", Alias: "pi", TargetModels: []string{"deepseek-v4.1-flash-free"}})
+	_ = st.UpsertAlias(store.Alias{ID: "a5", Alias: "lnr", TargetModels: []string{"openrouter/z-ai/glm-5.3-flash"}})
 	_ = st.UpsertRoute(scheduler.Route{ID: "r1", ModelID: "model-new", ProviderKeyID: "k1", Enabled: true, RouteState: "healthy", SupportsVision: false})
 	_ = st.UpsertRoute(scheduler.Route{ID: "r2", ModelID: "model-vis", ProviderKeyID: "k1", Enabled: true, RouteState: "healthy", SupportsVision: true})
 	return New(st, Config{})
@@ -65,5 +70,30 @@ func TestAutoEnrollVerifiedRoutesStartup(t *testing.T) {
 	}
 	if got := aliasTargets(g, "vision"); len(got) != 1 {
 		t.Fatalf("untested vision route must not enrol at startup: %v", got)
+	}
+}
+
+func TestAutoEnrollSkipsDedicatedAliases(t *testing.T) {
+	g := setupAutoEnroll(t)
+	// A new working route must join the Layer 1 pools but leave the
+	// pinned single-model lines untouched, on success and at startup.
+	route := scheduler.Route{ID: "r1", ModelID: "model-new", SupportsVision: false}
+	if enrolled := g.AutoEnrollRoute(route); len(enrolled) != 2 {
+		t.Fatalf("on-success enrolment must hit coder+fast only, got %v", enrolled)
+	}
+	if got := aliasTargets(g, "pi"); len(got) != 1 || got[0] != "deepseek-v4.1-flash-free" {
+		t.Fatalf("pi must stay a single-model line, got %v", got)
+	}
+	if got := aliasTargets(g, "lnr"); len(got) != 1 || got[0] != "openrouter/z-ai/glm-5.3-flash" {
+		t.Fatalf("lnr must stay a single-model line, got %v", got)
+	}
+	// Startup scan: same rule for the verified-route pass.
+	_ = g.Store.RecordSuccess("r1", "k1", 100, 0, 50)
+	g.AutoEnrollVerifiedRoutes()
+	if got := aliasTargets(g, "pi"); len(got) != 1 {
+		t.Fatalf("startup scan must not append to pi, got %v", got)
+	}
+	if got := aliasTargets(g, "lnr"); len(got) != 1 {
+		t.Fatalf("startup scan must not append to lnr, got %v", got)
 	}
 }

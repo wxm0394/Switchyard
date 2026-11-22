@@ -21,8 +21,17 @@ import (
 //     disabled/exhausted/unavailable_for_key/cooldown state).
 //
 // Shared rules, identical in both triggers:
-//  - Every alias except "vision" is a candidate; "vision" only when
-//    the route supports vision (capability-filtered).
+//  - Only Layer 1 aliases are candidates: coder, fast, reasoning, and
+//    vision (the latter only when the route supports vision,
+//    capability-filtered). Dedicated single-model aliases (pi, lnr,
+//    kaggle-gpu, ceo, ...) are pinned lines: a client that asks for
+//    one must get exactly that model, never a pool fallback. Before
+//    this rule, auto-enroll appended every verified route to every
+//    alias, so a restart (or any success) silently turned the pinned
+//    lines into pools — pi traffic leaked onto the LNR GLM route and
+//    LNR traffic onto deepseek (2026-11-22). A new Layer 1 pool is a
+//    deliberate addition to layer1Aliases below; a new dedicated alias
+//    needs no code change, it is excluded by not being listed.
 //  - An alias that already contains the route's modelId is SKIPPED.
 //    This is why reordering an in-pool route sticks, but a removed
 //    route re-enrols on its next success.
@@ -34,6 +43,15 @@ import (
 // In Go this lives in the gateway package, not scheduler: scheduler
 // cannot import store (store already imports scheduler), and
 // enrolment needs alias persistence.
+
+// layer1Aliases is the set of pool aliases auto-enroll may append to.
+// Everything else is a pinned/dedicated line and is left alone.
+var layer1Aliases = map[string]bool{
+	"coder":     true,
+	"fast":      true,
+	"reasoning": true,
+	"vision":    true,
+}
 
 func containsModel(targets []string, modelID string) bool {
 	for _, t := range targets {
@@ -52,6 +70,9 @@ func (g *Gateway) enrollRouteIntoAliases(route scheduler.Route, logSuffix string
 	}
 	enrolled := []string{}
 	for _, alias := range aliases {
+		if !layer1Aliases[alias.Alias] {
+			continue
+		}
 		if alias.Alias == "vision" && !route.SupportsVision {
 			continue
 		}
