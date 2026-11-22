@@ -195,3 +195,31 @@ func TestLookupModelPrice100milionseek(t *testing.T) {
 		t.Fatalf("expected cost ~0.90, got %.6f", cost)
 	}
 }
+
+func TestLookupModelPriceOpenRouterGLM53Flash(t *testing.T) {
+	// OpenRouter serves GLM-5.3 Flash under the z-ai/ slug; the gateway
+	// route is namespaced openrouter/z-ai/glm-5.3-flash (LevelNRead line,
+	// alias lnr). LiteLLM lists z-ai/glm-5.3-flash at 1.5e-07 in /
+	// 5e-07 out, so this is an exact price, not an estimate. Without
+	// the alias the route's cost_usd stays NULL and /cost/ drops the
+	// model.
+	p, ok := LookupModelPrice("openrouter/z-ai/glm-5.3-flash")
+	if !ok {
+		t.Fatalf("expected ok=true for openrouter/z-ai/glm-5.3-flash")
+	}
+	if p.InputCostPerToken != 0.00000015 || p.OutputCostPerToken != 0.0000005 {
+		t.Fatalf("expected GLM-5.3 Flash prices (1.5e-07/5e-07), got %v/%v",
+			p.InputCostPerToken, p.OutputCostPerToken)
+	}
+	if p.Estimated {
+		t.Fatalf("expected Estimated=false for an exact canonical price")
+	}
+	// 1M in + 500K out: 0.15 + 0.25 = $0.40
+	cost, ok := CostFor("openrouter/z-ai/glm-5.3-flash", 1_000_000, 500_000)
+	if !ok {
+		t.Fatalf("expected ok=true for openrouter/z-ai/glm-5.3-flash cost")
+	}
+	if math.Abs(cost-0.40) > 0.001 {
+		t.Fatalf("expected cost ~0.40, got %.6f", cost)
+	}
+}
