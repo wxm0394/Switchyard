@@ -79,6 +79,13 @@ var priceAliases = map[string]priceAlias{
 	// deepseek/deepseek-v4.1-flash. Without this alias the route's
 	// cost_usd stays NULL and /cost/ drops the whole model.
 	"deepseek-v4.1-flash-free": {canonical: "deepseek/deepseek-v4.1-flash"},
+	// OpenRouter serves GLM-5.3 Flash under the z-ai/ slug, but the
+	// gateway route is namespaced openrouter/z-ai/glm-5.3-flash (the
+	// LevelNRead dedicated line, alias lnr). LiteLLM lists the
+	// canonical z-ai/glm-5.3-flash at 1.5e-07 in / 5e-07 out, so this
+	// is an exact price, not an estimate. Without the alias the
+	// route's cost_usd stays NULL and /cost/ drops the whole model.
+	"openrouter/z-ai/glm-5.3-flash": {canonical: "z-ai/glm-5.3-flash"},
 }
 
 // LookupModelPrice returns the ModelPrice metadata for a given modelID if present.
